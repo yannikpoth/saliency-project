@@ -3,12 +3,14 @@ import pyglet
 import numpy as np
 import os
 import pandas as pd
+from vr_schedule import create_vr_schedule
 
 ####################################### SET TASK PARAMETERS #######################################
 
 n_practice_trials = 15                  # Anzahl Practice-Trials
 n_main_trials = 200                     # Anzahl Haupt-Trials
-vr_schedule = np.random.randint(4, 8)   # Variable Ratio Reinforcement Plan für salientes Feedback
+vr_schedule = create_vr_schedule()   # Variable Ratio Reinforcement Plan für salientes Feedback
+print(vr_schedule)
 
 ITI_mean, ITI_sd = 2.0, 0.5             # Inter Trial Intervall Dauer und Dauer-Varianz
 
@@ -34,7 +36,7 @@ screen_width = screen.width
 screen_height = screen.height
 
 # Window erstellen
-win = visual.Window(size=(screen_width, screen_height), fullscr=False, screen=0,
+win = visual.Window(size=(screen_width, screen_height), fullscr=False, screen=1,
                 winType='pyglet', allowStencil=False,
                 monitor='testMonitor', color='black', colorSpace='rgb',
                 backgroundImage='', backgroundFit='none',
@@ -79,15 +81,22 @@ feedback_salient_2 = visual.MovieStim(
     movieLib='ffpyplayer', loop=False, noAudio=True, units=win.units, ori=0.0, 
     anchor='center', opacity=None, contrast=1.0, depth=-2)
 
+# Load Background Music
+background_music = sound.Sound('media/sounds/ambience.mp3')
+background_music.setVolume(0.8)  # Set initial volume level
+background_music.play(loops=-1)  # Play in continuous loop
+
 # Salient Feedback Sound
 salient_sound = sound.Sound('media/sounds/salient_feedback.wav')
+salient_sound.setVolume(0.8)
+
 
 # Load the random walk data from CSV
 random_walk_data = pd.read_csv('random_walk_data.csv')
 
 # Task Parameter
 total_trials = n_practice_trials + n_main_trials
-success_counter = 0  # Zähler für erfolgreiche Trials
+schedule_index = -1  # Zähler für erfolgreiche Trials
 trial_counter = 0  # Zähler für die Anzahl der Trials seit dem letzten „salient“ Feedback
 
 '''
@@ -95,6 +104,21 @@ trial_counter = 0  # Zähler für die Anzahl der Trials seit dem letzten „sali
 def calc_reward(prob):
     return np.random.rand() < prob
 '''
+# Adjust backround sound volume while salient feedback
+def adjust_background_volume(during_salient=True):
+    if during_salient:
+        background_music.setVolume(0.2)  # Reduce volume during salient feedback
+    else:
+        steps = 20  # Number of steps for the fade-in
+        initial_volume = 0.2  # Start volume during salient feedback
+        volume_step = (0.8 - 0.2) / steps
+        interval = 0.5 / steps
+        
+        # Gradually increase the volume
+        for i in range(steps):
+            current_volume = initial_volume + i * volume_step
+            background_music.setVolume(current_volume)
+            core.wait(interval)  # Wait between each step
 
 # Inter Trial Interval (ITI)
 def get_iti():
@@ -106,10 +130,12 @@ with open(log_file, 'w') as f:
 
 # Funktion zur Durchführung eines Trials
 def run_trial(trial_num, mode):
-    global reward_probs, success_counter, vr_schedule, trial_counter
+    global reward_probs, schedule_index, vr_schedule, trial_counter
     
     reward_probs = [random_walk_data.loc[trial_num, 'mu_1'], random_walk_data.loc[trial_num, 'mu_2']]
     payoffs = [random_walk_data.loc[trial_num, 'payoff_1'], random_walk_data.loc[trial_num, 'payoff_2']]
+
+    print(schedule_index)
 
     # Randomisiere die Position der Stimuli (links/rechts)
     if np.random.rand() > 0.5:
@@ -144,18 +170,17 @@ def run_trial(trial_num, mode):
     trial_counter += 1
 
     if win_this_trial:
-        success_counter += 1
         feedback_text.text = '+100 Punkte'
+        schedule_index += 1
     else:
         feedback_text.text = '+0 Punkte'
 
     # Bestimme die Bedingung (salient vs. non-salient)
-    if (success_counter >= vr_schedule or trial_counter >= 10) and win_this_trial:
+    if (vr_schedule[schedule_index] == 1 or trial_counter >= 10) and win_this_trial:
         feedback_cond = 'salient'
-        success_counter = 0
         trial_counter = 0
-        vr_schedule = np.random.randint(4, 8)
         
+        adjust_background_volume(during_salient=True)  # Lower background music
         salient_sound.play()
 
         # Ersetze den gewählten Stimulus durch den entsprechenden salient Feedback Stimulus
@@ -173,6 +198,11 @@ def run_trial(trial_num, mode):
         while not feedback_vid.isFinished:
             feedback_vid.draw()
             win.flip()
+        
+        while salient_sound.status == "PLAYING":
+            core.wait(0.01)  # Check every 10 ms to see if sound is still playing
+
+        adjust_background_volume(during_salient=False)
         
         other_stim.setAutoDraw(False)
         feedback_text.setAutoDraw(False)
