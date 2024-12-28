@@ -1,0 +1,108 @@
+# 1. Prerequisities
+```{r}
+library(rstan)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(shinystan)
+
+# set working dir to dir where R-file resides
+setwd(file.path(dirname(rstudioapi::getSourceEditorContext()$path)))
+
+# file pathes of all csv data files
+relative_file_path <- "../../task/data"
+file_paths <- list.files(path = relative_file_path, 
+                         pattern = "*.csv", full.names = TRUE)
+
+# import function for all csv data
+load_data <- function(file_paths) {
+  all_data <- lapply(file_paths, read.csv)
+  return(all_data)
+}
+
+# import all data
+all_data <- load_data(file_paths)
+```
+# 2. Call variables
+```{r}
+# number of subjects and trials
+nSubjects <- length(all_data)
+max_nTrials <- max(sapply(all_data, function(x) nrow(x)))
+
+# Initialize arrays
+choice <- array(NA, dim = c(nSubjects, max_nTrials))
+reward <- array(NA, dim = c(nSubjects, max_nTrials))
+cue <- array(NA, dim = c(nSubjects, max_nTrials))
+
+# Fill arrays with data
+for (i in 1:nSubjects) {
+  data <- all_data[[i]]
+  nTrials <- nrow(data)
+  choice[i, 1:nTrials] <- data$choice + 1
+  reward[i, 1:nTrials] <- data$reward
+  cue[i, 1:nTrials] <- data$condition
+}
+
+# Prepare date for model fitting
+my_data <- list(nTrials=max_nTrials, nSubjects=nSubjects,
+                choice=choice, reward=reward,
+                cue = cue)
+```
+# 3. Model analysis
+## 3.1 Simple model (w/o alpha shift)
+```{r}
+model_file <- "ms_ql_1lr.stan"
+# models: ms_ql_1lr.stan ms_ql_1lr_shift.stan ms_ql_1lr_shift_phi.stan
+
+my_model <- stan_model(model_file)
+
+my_samples <- sampling(
+  my_model, 
+  my_data, 
+  cores = getOption("mc.cores", 1L),
+  chains = 2,
+  iter = 2000
+  )
+```
+## 3.2 Complex model (w/ alpha shift)
+```{r}
+model_file <- "ms_ql_1lr_shift.stan"
+
+my_model <- stan_model(model_file)
+
+my_samples <- sampling(
+  my_model, 
+  my_data, 
+  cores = getOption("mc.cores", 1L),
+  chains = 2,
+  iter = 4000, # initial value: 2000, possible solution for R-hat issue
+  control=list(max_treedepth=15), # possible solution for treedepth issue
+  )
+```
+# 4. Output data
+## 4.1 Simple model
+```{r}
+# Zusammenfassung der Posterior-Verteilungen
+print(summary(my_samples, pars = c("alpha", "beta"), probs = c(0.025, 0.5, 0.975)))
+
+# Extrahiere die Posterior-Samples
+posterior_array <- as.array(my_samples)
+
+# Konvertiere die Posterior-Samples in ein DataFrame
+posterior_df <- as.data.frame(posterior_array)
+```
+## 4.2 Complex model
+```{r}
+# Zusammenfassung der Posterior-Verteilungen
+print(summary(my_samples, pars = c("alpha", "alpha_s", "beta"), probs = c(0.025, 0.5, 0.975)))
+
+# Extrahiere die Posterior-Samples
+posterior_array <- as.array(my_samples)
+
+# Konvertiere die Posterior-Samples in ein DataFrame
+posterior_df <- as.data.frame(posterior_array)
+```
+# 5. shinystan
+```{r}
+launch_shinystan(my_samples)
+```

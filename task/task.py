@@ -10,8 +10,7 @@ from vr_schedule import create_vr_schedule
 n_practice_trials = 15                  # Anzahl Practice-Trials
 n_main_trials = 200                     # Anzahl Haupt-Trials
 vr_schedule = create_vr_schedule()   # Variable Ratio Reinforcement Plan für salientes Feedback
-print(vr_schedule)
-
+print (vr_schedule)
 ITI_mean, ITI_sd = 2.0, 0.5             # Inter Trial Intervall Dauer und Dauer-Varianz
 
 ###################################################################################################
@@ -126,7 +125,7 @@ def get_iti():
 
 # Protokoll initialisieren
 with open(log_file, 'w') as f:
-    f.write('Mode,Trial,Arm_Chosen,Win,Condition,Reward_Prob_1,Reward_Prob_2\n')
+    f.write('mode,trial,choice,reward,condition,reward_prob_1,reward_prob_2,payoff_1,payoff_2\n')
 
 # Funktion zur Durchführung eines Trials
 def run_trial(trial_num, mode):
@@ -134,8 +133,6 @@ def run_trial(trial_num, mode):
     
     reward_probs = [random_walk_data.loc[trial_num, 'mu_1'], random_walk_data.loc[trial_num, 'mu_2']]
     payoffs = [random_walk_data.loc[trial_num, 'payoff_1'], random_walk_data.loc[trial_num, 'payoff_2']]
-
-    print(schedule_index)
 
     # Randomisiere die Position der Stimuli (links/rechts)
     if np.random.rand() > 0.5:
@@ -224,8 +221,11 @@ def run_trial(trial_num, mode):
     
 
     # Logge den Trial
+    reward = 1 if win_this_trial else 0
+    condition = 0 if feedback_cond == 'non-salient' else 1
+    print(feedback_cond, condition)
     with open(log_file, 'a') as f:
-        f.write(f'{mode},{trial_num+1},{chosen_arm},{win_this_trial},{feedback_cond},{reward_probs[0]},{reward_probs[1]},{payoffs[0]},{payoffs[1]}\n')
+        f.write(f'{mode},{trial_num+1},{chosen_arm},{reward},{condition},{reward_probs[0]},{reward_probs[1]},{payoffs[0]},{payoffs[1]}\n')
 
 
     # Inter Trial Interval (ITI)
