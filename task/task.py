@@ -1,5 +1,6 @@
 from psychopy import visual, core, event, gui, data, sound
 import pyglet
+import pygame
 import numpy as np
 import os
 import pandas as pd
@@ -81,14 +82,16 @@ feedback_salient_2 = visual.MovieStim(
     anchor='center', opacity=None, contrast=1.0, depth=-2)
 
 # Load Background Music
-background_music = sound.Sound('media/sounds/ambience.mp3')
-background_music.setVolume(0.8)  # Set initial volume level
-background_music.play(loops=-1)  # Play in continuous loop
+pygame.mixer.init()
+background_music = pygame.mixer.Sound('media/sounds/ambience.mp3')
+background_music.play(loops=-1)
 
 # Salient Feedback Sound
 salient_sound = sound.Sound('media/sounds/salient_feedback.wav')
 salient_sound.setVolume(0.8)
 
+# Initialize reaction time clock
+reaction_time_clock = core.Clock()
 
 # Load the random walk data from CSV
 random_walk_data = pd.read_csv('random_walk_data.csv')
@@ -106,17 +109,18 @@ def calc_reward(prob):
 # Adjust backround sound volume while salient feedback
 def adjust_background_volume(during_salient=True):
     if during_salient:
-        background_music.setVolume(0.2)  # Reduce volume during salient feedback
+        background_music.set_volume(0.2)  # Reduce volume during salient feedback
     else:
         steps = 20  # Number of steps for the fade-in
         initial_volume = 0.2  # Start volume during salient feedback
-        volume_step = (0.8 - 0.2) / steps
-        interval = 0.5 / steps
-        
+        target_volume = 0.8  # Target volume
+        volume_step = (target_volume - initial_volume) / steps
+        interval = 0.5 / steps  # Total fade-in time divided by steps
+
         # Gradually increase the volume
         for i in range(steps):
             current_volume = initial_volume + i * volume_step
-            background_music.setVolume(current_volume)
+            background_music.set_volume(current_volume)
             core.wait(interval)  # Wait between each step
 
 # Inter Trial Interval (ITI)
@@ -125,7 +129,7 @@ def get_iti():
 
 # Protokoll initialisieren
 with open(log_file, 'w') as f:
-    f.write('mode,trial,choice,reward,condition,reward_prob_1,reward_prob_2,payoff_1,payoff_2\n')
+    f.write('mode,trial,choice,reaction_time,reward,condition,reward_prob_1,reward_prob_2,payoff_1,payoff_2\n')
 
 # Funktion zur Durchführung eines Trials
 def run_trial(trial_num, mode):
@@ -146,9 +150,15 @@ def run_trial(trial_num, mode):
     stim1.draw()
     stim2.draw()
     win.flip()
+    
+    # Reset the reaction time clock
+    reaction_time_clock.reset()
 
     # Warte auf Antwort (links/rechts)
     keys = event.waitKeys(keyList=['left', 'right'])
+    
+    # Record the reaction time
+    reaction_time = reaction_time_clock.getTime()
     
     # Finde heraus, welcher Stimulus gewählt wurde
     if keys[0] == 'left':
@@ -225,7 +235,7 @@ def run_trial(trial_num, mode):
     condition = 0 if feedback_cond == 'non-salient' else 1
     print(feedback_cond, condition)
     with open(log_file, 'a') as f:
-        f.write(f'{mode},{trial_num+1},{chosen_arm},{reward},{condition},{reward_probs[0]},{reward_probs[1]},{payoffs[0]},{payoffs[1]}\n')
+        f.write(f'{mode},{trial_num+1},{chosen_arm},{reaction_time},{reward},{condition},{reward_probs[0]},{reward_probs[1]},{payoffs[0]},{payoffs[1]}\n')
 
 
     # Inter Trial Interval (ITI)
