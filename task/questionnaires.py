@@ -1,6 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
-from tkinter import font
+from tkinter import ttk, messagebox, font
 import csv
 import subprocess
 import sys
@@ -12,14 +11,30 @@ class QuestionnaireApp:
         self.root.title("Questionnaires")
         self.root.state('zoomed')
         
+        # Reference dimensions
+        self.base_width = 1920
+        self.base_height = 1080
+        self.base_font_size = 14
+        
+        # Create dynamic fonts
+        self.dynamic_font = font.Font(family="Arial", size=self.base_font_size)
+        self.bold_font = font.Font(family="Arial", size=self.base_font_size, weight="bold")
+        
+        # Create a style and configure custom styles for labels and radiobuttons.
+        self.style = ttk.Style()
+        self.style.configure("Custom.TLabel", font=self.dynamic_font)
+        self.style.configure("CustomBold.TLabel", font=self.bold_font)
+        self.style.configure("Custom.TRadiobutton", font=self.dynamic_font)
+        self.style.configure("TButton", font=self.dynamic_font)
+        
+        # Bind resize event
+        self.root.bind("<Configure>", self.on_resize)
+
         self.participant_id = None
         self.current_frame = None
         self.bis_vars = []
         self.sss_vars = []
 
-
-        
-        # BIS Items (15 questions)
         self.bis_items = [
             {"text": "1. Ich plane meine Vorhaben gründlich.", "reverse": True},
             {"text": "2. Ich mache häufig Dinge ohne vorher darüber nachzudenken.", "reverse": False},
@@ -49,17 +64,38 @@ class QuestionnaireApp:
             {"question": "Frage 7", "a": "Ich würde gerne einmal einen Fallschirmabsprung versuchen.", "b": "Ich würde niemals einen Fallschirmabsprung aus einem Flugzeug wagen.", "subscale": "SST", "correct": "a"},
             {"question": "Frage 8", "a": "Ich finde etwas Interessantes an fast jeder Person, mit der ich rede.", "b": "Ich habe keine Geduld mit trägen oder langweiligen Personen.", "subscale": "SSB", "correct": "b"},
         ]
-
         self.show_participant_id()
+
+    def on_resize(self, event):
+        # Calculate scaling factor.
+        # If the window is larger than base dimensions, you may want to avoid scaling up too much.
+        scale_w = event.width / self.base_width
+        scale_h = event.height / self.base_height
+        scale = min(scale_w, scale_h)
+        
+        # Only scale down (or up to a maximum)
+        if scale > 1:
+            scale = 1  # Do not enlarge fonts beyond base size
+        
+        new_font_size = max(8, int(self.base_font_size * scale))
+        # Update our dynamic font objects
+        self.dynamic_font.configure(size=new_font_size)
+        self.bold_font.configure(size=new_font_size)
+        
+        # Also update our styles so that ttk widgets that reference these styles update
+        self.style.configure("Custom.TLabel", font=self.dynamic_font)
+        self.style.configure("CustomBold.TLabel", font=self.bold_font)
+        self.style.configure("Custom.TRadiobutton", font=self.dynamic_font)
+        self.style.configure("TButton", font=self.dynamic_font)
 
     def show_participant_id(self):
         self.current_frame = ttk.Frame(self.root)
-        self.current_frame.pack(pady=50)
+        self.current_frame.pack(pady=50, expand=True)
         
-        ttk.Label(self.current_frame, text="Bitte geben Sie Ihre Teilnehmer-ID ein:").pack()
-        self.id_entry = ttk.Entry(self.current_frame)
+        ttk.Label(self.current_frame, text="Bitte geben Sie Ihre Teilnehmer-ID ein:", style="Custom.TLabel").pack()
+        self.id_entry = ttk.Entry(self.current_frame, font=self.dynamic_font)
         self.id_entry.pack(pady=10)
-        ttk.Button(self.current_frame, text="Start", command=self.start_questionnaires).pack()
+        ttk.Button(self.current_frame, text="Start", command=self.start_questionnaires, style="TButton").pack()
 
     def start_questionnaires(self):
         self.participant_id = self.id_entry.get()
@@ -72,56 +108,39 @@ class QuestionnaireApp:
     def show_bis(self):
         self.current_frame = ttk.Frame(self.root)
         self.current_frame.pack(fill="both", expand=True, padx=150, pady=50)
-
-        # Main container
+        
         container = ttk.Frame(self.current_frame)
         container.pack(fill="both", expand=True)
 
-        # Configure grid columns
         headers = ["Frage", "1 - selten/nie", "2 - gelegentlich", "3 - oft", "4 - fast immer/immer"]
-        
-        # Calculate column widths
-        header_widths = []
-        for header in headers:
-            temp_label = ttk.Label(self.root, text=header, font=('Arial', 14, 'bold'))
-            header_widths.append(temp_label.winfo_reqwidth() + 20)
-        max_width = max(header_widths)
-
-        # Create headers
         for col, header in enumerate(headers):
             ttk.Label(container, 
-                    text=header, 
-                    font=('Arial', 14, 'bold'),
-                    anchor="center").grid(row=0, column=col, padx=10, pady=5, sticky="nsew")
-            container.columnconfigure(col, minsize=max_width, weight=1)
+                      text=header, 
+                      style="CustomBold.TLabel",
+                      anchor="center").grid(row=0, column=col, padx=10, pady=5, sticky="nsew")
+            container.columnconfigure(col, weight=1)
 
-        # Create variables and questions
         self.bis_vars = [tk.IntVar() for _ in self.bis_items]
-
-        # Add questions and radio buttons
         for row_idx, item in enumerate(self.bis_items, start=1):
-            # Question text
             ttk.Label(container, 
-                    text=item["text"], 
-                    wraplength=400,
-                    font=('Arial', 14),
-                    anchor="w").grid(row=row_idx, column=0, sticky="w", padx=10, pady=5)
-
-            # Radio buttons
+                      text=item["text"], 
+                      wraplength=400,
+                      style="Custom.TLabel",
+                      anchor="w").grid(row=row_idx, column=0, sticky="w", padx=10, pady=5)
             for col_idx in range(1, 5):
-                rb_frame = ttk.Frame(container, width=max_width)
+                rb_frame = ttk.Frame(container)
                 rb_frame.grid(row=row_idx, column=col_idx, padx=10, pady=5, sticky="nsew")
-                
                 ttk.Radiobutton(rb_frame,
-                              variable=self.bis_vars[row_idx-1],
-                              value=col_idx).place(relx=0.5, rely=0.5, anchor="center")
-
-        # Navigation button
+                                variable=self.bis_vars[row_idx-1],
+                                value=col_idx,
+                                style="Custom.TRadiobutton").place(relx=0.5, rely=0.5, anchor="center")
+                
         btn_frame = ttk.Frame(self.current_frame)
         btn_frame.pack(pady=10)
         ttk.Button(btn_frame, 
-                 text="Weiter zum nächsten Fragebogen",
-                 command=self.validate_bis).pack()
+                   text="Weiter zum nächsten Fragebogen",
+                   command=self.validate_bis,
+                   style="TButton").pack()
 
     def validate_bis(self):
         if any(var.get() == 0 for var in self.bis_vars):
@@ -136,33 +155,33 @@ class QuestionnaireApp:
         
         container = ttk.Frame(self.current_frame)
         container.pack(fill="both", expand=True)
-
         self.sss_vars = [tk.StringVar() for _ in self.sss_items]
         
         for i, item in enumerate(self.sss_items):
             question_frame = ttk.Frame(container)
             question_frame.pack(fill="x", pady=10)
             
-            ttk.Label(question_frame, text=f"{i+1}. {item['question']}", font=('Arial', 14, 'bold')).pack(anchor="w")
-            
+            ttk.Label(question_frame, text=f"{i+1}. {item['question']}", style="CustomBold.TLabel").pack(anchor="w")
             ttk.Radiobutton(
                 question_frame,
                 text=item["a"],
                 variable=self.sss_vars[i],
-                value="a"
+                value="a",
+                style="Custom.TRadiobutton"
             ).pack(anchor="w", padx=20, pady=5)
-            
             ttk.Radiobutton(
                 question_frame,
                 text=item["b"],
                 variable=self.sss_vars[i],
-                value="b"
+                value="b",
+                style="Custom.TRadiobutton"
             ).pack(anchor="w", padx=20, pady=5)
 
         ttk.Button(
             self.current_frame,
             text="Fragebogen abschließen",
-            command=self.validate_sss
+            command=self.validate_sss,
+            style="TButton"
         ).pack(pady=10)
 
     def validate_sss(self):
@@ -174,17 +193,11 @@ class QuestionnaireApp:
         self.launch_experiment()
 
     def save_data(self):
-        # Create data directory if it doesn't exist
         os.makedirs('data', exist_ok=True)
         filename = os.path.join('data', f'{self.participant_id}_questions.csv')
-
-        # Collect BIS responses (raw scores)
         bis_responses = [var.get() for var in self.bis_vars]
-
-        # Collect SSS responses ('a'/'b')
         sss_responses = [var.get() for var in self.sss_vars]
 
-        # Compute BIS total (with reverse scoring)
         bis_total = 0
         for i, value in enumerate(bis_responses):
             if self.bis_items[i]["reverse"]:
@@ -192,31 +205,24 @@ class QuestionnaireApp:
             else:
                 bis_total += value
 
-        # Compute SSS subscales
         ss_scores = {"SST": 0, "SSE": 0, "SSD": 0, "SSB": 0}
         for i, response in enumerate(sss_responses):
             item = self.sss_items[i]
             if response == item["correct"]:
                 ss_scores[item["subscale"]] += 1
 
-        # Calculate SSS metrics
         ss_total = (ss_scores["SST"] + ss_scores["SSE"] + ss_scores["SSD"] + ss_scores["SSB"]) / 4
         ss_percent = ss_total * 25
 
-        # Prepare headers and data row
         headers = ["participant_id"]
-        headers += [f"bis_{i+1}" for i in range(15)]  # BIS items 1-15
-        headers += [f"sss_{i+1}" for i in range(8)]   # SSS items 1-8
+        headers += [f"bis_{i+1}" for i in range(len(self.bis_items))]
+        headers += [f"sss_{i+1}" for i in range(len(self.sss_items))]
         headers += ["bis_total", "SST", "SSE", "SSD", "SSB", "ss_total", "ss_percent"]
 
-        data_row = [self.participant_id]
-        data_row += bis_responses  # Add raw BIS responses
-        data_row += sss_responses  # Add raw SSS responses
-        data_row += [bis_total]
-        data_row += [ss_scores["SST"], ss_scores["SSE"], ss_scores["SSD"], ss_scores["SSB"]]
-        data_row += [ss_total, ss_percent]
+        data_row = [self.participant_id] + bis_responses + sss_responses + [bis_total,
+                    ss_scores["SST"], ss_scores["SSE"], ss_scores["SSD"], ss_scores["SSB"],
+                    ss_total, ss_percent]
 
-        # Write to CSV
         with open(filename, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerow(headers)
