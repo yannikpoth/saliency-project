@@ -3,8 +3,4 @@ numpy==1.25.1
 pandas==2.0.3
 psychopy==2024.2.4
 pygame==2.6.1
-pyglet==1.5.27
-PyQt6==6.7.0
-PyQt6-Qt6==6.7.0
-PyQt6-sip==13.6.0
 wxPython==4.2.1
