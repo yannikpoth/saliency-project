@@ -14,7 +14,7 @@ class QuestionnaireApp:
         # Reference dimensions
         self.base_width = 1920
         self.base_height = 1080
-        self.base_font_size = 14
+        self.base_font_size = 18
         
         # Create dynamic fonts
         self.dynamic_font = font.Font(family="Arial", size=self.base_font_size)
@@ -67,26 +67,27 @@ class QuestionnaireApp:
         self.show_participant_id()
 
     def on_resize(self, event):
-        # Calculate scaling factor.
-        # If the window is larger than base dimensions, you may want to avoid scaling up too much.
-        scale_w = event.width / self.base_width
-        scale_h = event.height / self.base_height
+        # Get the current full window dimensions.
+        current_width = self.root.winfo_width()
+        current_height = self.root.winfo_height()
+        
+        # Calculate scaling factors based on your reference dimensions.
+        scale_w = current_width / self.base_width
+        scale_h = current_height / self.base_height
         scale = min(scale_w, scale_h)
         
-        # Only scale down (or up to a maximum)
-        if scale > 1:
-            scale = 1  # Do not enlarge fonts beyond base size
-        
         new_font_size = max(8, int(self.base_font_size * scale))
-        # Update our dynamic font objects
+        
+        # Update font objects
         self.dynamic_font.configure(size=new_font_size)
         self.bold_font.configure(size=new_font_size)
         
-        # Also update our styles so that ttk widgets that reference these styles update
+        # Update styles so widgets refresh their font
         self.style.configure("Custom.TLabel", font=self.dynamic_font)
         self.style.configure("CustomBold.TLabel", font=self.bold_font)
         self.style.configure("Custom.TRadiobutton", font=self.dynamic_font)
         self.style.configure("TButton", font=self.dynamic_font)
+
 
     def show_participant_id(self):
         self.current_frame = ttk.Frame(self.root)
