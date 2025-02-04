@@ -53,10 +53,10 @@ CONFIG = {
     },
     'INSTRUCTIONS': {
         'PRE_PRACTICE': [
-            ("Willkommen!\n\nDu bist jetzt Teil eines spannenden Experiments. Deine Aufgabe ist es, Entscheidungen zu treffen, um möglichst viele Punkte zu sammeln.\n\nIn jeder Runde hast du zwei Optionen zur Auswahl. Du wählst eine davon aus und siehst sofort, ob du Punkte gewonnen hast oder nicht.",
+            ("Willkommen!\n\nDu bist jetzt Teil eines spannenden Experiments. Deine Aufgabe ist es, Entscheidungen zu treffen, um möglichst viele Punkte zu sammeln.\n\nIn jeder Runde hast du zwei Optionen zur Auswahl. Du wählst eine davon aus und siehst sofort, ob du Punkte gewonnen hast oder nicht.\n\n Benutze die Pfeiltasten auf der Tastatur, um eine Option auszuwählen.\nMit der '←'-Taste wählst du die linke Option, mit der '→'-Taste wählst du die rechte Option",
             "Drücke LEERTASTE, um fortzufahren."),
             
-            ("Die Wahrscheinlichkeit, mit einer Option Punkte zu gewinnen, verändert sich im Laufe des Spiels. Deine Aufgabe ist es herauszufinden, welche Option momentan die beste ist.\n\nAchte darauf: Die Symbole erscheinen manchmal links, manchmal rechts – das ist zufällig und spielt keine Rolle. Entscheidend ist nur, welches Symbol du auswählst.",
+            ("Die Wahrscheinlichkeit, mit einer Option Punkte zu gewinnen, verändert sich im Laufe des Spiels. Deine Aufgabe ist es herauszufinden, welche Option momentan die beste ist.\n\nAchte darauf: Die Symbole erscheinen manchmal links, manchmal rechts – das ist zufällig und spielt keine Rolle. Entscheidend ist nur, welches Symbol du auswählst und NICHT auf welcher Seite sich das Symbol gerade befindet.",
             "Drücke LEERTASTE, um fortzufahren."),
             
             ("Manchmal wirst du zusätzlich zum Gewinn Rückmeldung mit besonderen Effekten erhalten.\nDenke immer daran: Dein Ziel ist es, möglichst viele Punkte zu sammeln.",
@@ -65,7 +65,7 @@ CONFIG = {
             ("Am Ende des Spiels erhältst du eine Bonuszahlung basierend auf deinen gesammelten Punkten. Du kannst dabei bis zu 3€ zusätzlich verdienen.",
             "Drücke LEERTASTE, um fortzufahren."),
             
-            ("Bevor das eigentliche Spiel beginnt, absolvierst du ein paar Übungsrunden, um dich mit den Regeln und Abläufen vertraut zu machen.\n\n Die Übungsrunden fließen NICHT in deine Bonuszahlung mit ein.",
+            ("Bevor das eigentliche Spiel beginnt, absolvierst du ein paar Übungsrunden, um dich mit den Regeln und Abläufen vertraut zu machen.\n\n Die Übungsrunden fließen NICHT in deine Bonuszahlung mit ein.\n\n DENKE DARAN: Du wählst die Optionen mit den Pfeiltasten (←/→) aus",
             "Drücke LEERTASTE, um die Übungsrunden zu starten.")
         ],
         'POST_PRACTICE': (
