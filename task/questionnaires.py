@@ -151,18 +151,50 @@ class QuestionnaireApp:
         self.show_sss()
 
     def show_sss(self):
+        # Create a new frame for the SSS questionnaire.
         self.current_frame = ttk.Frame(self.root)
         self.current_frame.pack(fill="both", expand=True, padx=150, pady=50)
-        
-        container = ttk.Frame(self.current_frame)
-        container.pack(fill="both", expand=True)
+
+        # Create a container frame for the canvas and scrollbar.
+        canvas_container = ttk.Frame(self.current_frame)
+        canvas_container.pack(side="top", fill="both", expand=True)
+
+        # Create a canvas and a vertical scrollbar within the container.
+        canvas = tk.Canvas(canvas_container)
+        v_scrollbar = ttk.Scrollbar(canvas_container, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=v_scrollbar.set)
+
+        # Pack the canvas and scrollbar inside the container.
+        canvas.pack(side="left", fill="both", expand=True)
+        v_scrollbar.pack(side="right", fill="y")
+
+        # Create a frame inside the canvas to contain the SSS widgets.
+        scrollable_frame = ttk.Frame(canvas)
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+
+        # Update the scroll region when the frame changes.
+        def on_frame_configure(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        scrollable_frame.bind("<Configure>", on_frame_configure)
+
+        def _on_mousewheel(event):
+            # For Windows, event.delta is usually in multiples of 120.
+            canvas.yview_scroll(-1 * int(event.delta/120), "units")
+
+        # Bind the mouse wheel when the cursor is over the canvas.
+        canvas.bind("<Enter>", lambda event: canvas.bind_all("<MouseWheel>", _on_mousewheel))
+        canvas.bind("<Leave>", lambda event: canvas.unbind_all("<MouseWheel>"))
+
+
+        # Populate the scrollable frame with SSS questionnaire items.
         self.sss_vars = [tk.StringVar() for _ in self.sss_items]
-        
         for i, item in enumerate(self.sss_items):
-            question_frame = ttk.Frame(container)
+            question_frame = ttk.Frame(scrollable_frame)
             question_frame.pack(fill="x", pady=10)
             
-            ttk.Label(question_frame, text=f"{i+1}. {item['question']}", style="CustomBold.TLabel").pack(anchor="w")
+            ttk.Label(question_frame,
+                      text=f"{i+1}. {item['question']}",
+                      style="CustomBold.TLabel").pack(anchor="w")
             ttk.Radiobutton(
                 question_frame,
                 text=item["a"],
@@ -178,12 +210,14 @@ class QuestionnaireApp:
                 style="Custom.TRadiobutton"
             ).pack(anchor="w", padx=20, pady=5)
 
+        # Now, place the finish button outside of the scrollable canvas container.
         ttk.Button(
             self.current_frame,
             text="Fragebogen abschließen",
             command=self.validate_sss,
             style="TButton"
-        ).pack(pady=10)
+        ).pack(side="bottom", pady=10)
+
 
     def validate_sss(self):
         if any(var.get() == "" for var in self.sss_vars):
