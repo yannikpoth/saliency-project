@@ -30,7 +30,13 @@ class QuestionnaireApp:
         # Bind resize event
         self.root.bind("<Configure>", self.on_resize)
 
-        self.participant_id = None
+        self.participant_id = sys.argv[1] if len(sys.argv) > 1 else None
+
+        if self.participant_id is None:
+            self.show_participant_id()
+        else:
+            self.show_instructions_general()
+
         self.current_frame = None
         self.bis_vars = []
         self.sss_vars = []
@@ -55,14 +61,14 @@ class QuestionnaireApp:
 
         # SSS Items (8 questions)
         self.sss_items = [
-            {"question": "Frage 1", "a": "Ich liebe ausgelassene, „wilde“ Partys.", "b": "Ich bevorzuge ruhige Partys mit guten Gesprächen.", "subscale": "SSD", "correct": "a"},
-            {"question": "Frage 2", "a": "Mir macht es nichts aus, wenn ich bei Filmen oder Schauspielen weiß, was als nächstes passiert.", "b": "Ich kann mich normalerweise nicht an Filmen oder Schauspielen erfreuen, bei denen ich genau weiß, was als nächstes passiert.", "subscale": "SSB", "correct": "b"},
-            {"question": "Frage 3", "a": "Manchmal liebe ich es, Dinge zu tun, die einem ein wenig Angst einflößen.", "b": "Eine vernünftige Person vermeidet Aktivitäten, die gefährlich sind.", "subscale": "SST", "correct": "a"},
-            {"question": "Frage 4", "a": "Ich liebe es, mich häufig durch Alkohol oder Rauchen in eine gute Stimmung zu versetzen.", "b": "Ich finde, dass mir künstliche Anregungsmittel wie Alkohol oder Rauchen nicht bekommen.", "subscale": "SSD", "correct": "a"},
-            {"question": "Frage 5", "a": "Wenn ich eine Reise unternehme, dann lege ich vorher meine Reiseroute und Zeitplanung sorgfältig fest.", "b": "Ich würde gerne eine Reise machen, ohne vorher die Route oder den zeitlichen Ablauf zu planen.", "subscale": "SSE", "correct": "b"},
-            {"question": "Frage 6", "a": "Ich bevorzuge „normale“ Personen aus meinem Umfeld als Freunde.", "b": "Ich würde gerne Freunde in Außenseitergruppen wie „Skinheads“ oder „Zigeuner“ kennen lernen.", "subscale": "SSE", "correct": "b"},
-            {"question": "Frage 7", "a": "Ich würde gerne einmal einen Fallschirmabsprung versuchen.", "b": "Ich würde niemals einen Fallschirmabsprung aus einem Flugzeug wagen.", "subscale": "SST", "correct": "a"},
-            {"question": "Frage 8", "a": "Ich finde etwas Interessantes an fast jeder Person, mit der ich rede.", "b": "Ich habe keine Geduld mit trägen oder langweiligen Personen.", "subscale": "SSB", "correct": "b"},
+            {"question": "Frage", "a": "Ich liebe ausgelassene, „wilde“ Partys.", "b": "Ich bevorzuge ruhige Partys mit guten Gesprächen.", "subscale": "SSD", "correct": "a"},
+            {"question": "Frage", "a": "Mir macht es nichts aus, wenn ich bei Filmen oder Schauspielen weiß, was als nächstes passiert.", "b": "Ich kann mich normalerweise nicht an Filmen oder Schauspielen erfreuen, bei denen ich genau weiß, was als nächstes passiert.", "subscale": "SSB", "correct": "b"},
+            {"question": "Frage", "a": "Manchmal liebe ich es, Dinge zu tun, die einem ein wenig Angst einflößen.", "b": "Eine vernünftige Person vermeidet Aktivitäten, die gefährlich sind.", "subscale": "SST", "correct": "a"},
+            {"question": "Frage", "a": "Ich liebe es, mich häufig durch Alkohol oder Rauchen in eine gute Stimmung zu versetzen.", "b": "Ich finde, dass mir künstliche Anregungsmittel wie Alkohol oder Rauchen nicht bekommen.", "subscale": "SSD", "correct": "a"},
+            {"question": "Frage", "a": "Wenn ich eine Reise unternehme, dann lege ich vorher meine Reiseroute und Zeitplanung sorgfältig fest.", "b": "Ich würde gerne eine Reise machen, ohne vorher die Route oder den zeitlichen Ablauf zu planen.", "subscale": "SSE", "correct": "b"},
+            {"question": "Frage", "a": "Ich bevorzuge „normale“ Personen aus meinem Umfeld als Freunde.", "b": "Ich würde gerne Freunde in Außenseitergruppen wie „Skinheads“ oder „Zigeuner“ kennen lernen.", "subscale": "SSE", "correct": "b"},
+            {"question": "Frage", "a": "Ich würde gerne einmal einen Fallschirmabsprung versuchen.", "b": "Ich würde niemals einen Fallschirmabsprung aus einem Flugzeug wagen.", "subscale": "SST", "correct": "a"},
+            {"question": "Frage", "a": "Ich finde etwas Interessantes an fast jeder Person, mit der ich rede.", "b": "Ich habe keine Geduld mit trägen oder langweiligen Personen.", "subscale": "SSB", "correct": "b"},
         ]
         self.show_participant_id()
 

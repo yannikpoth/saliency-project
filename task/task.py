@@ -1,5 +1,6 @@
 from psychopy import visual, core, event, gui, data
 import numpy as np
+import csv
 import os
 import pandas as pd
 from vr_schedule import create_vr_schedule
@@ -37,11 +38,17 @@ CONFIG = {
         'STIMULI': {
             'STIM1': 'media/stimuli/stim1.png',
             'STIM2': 'media/stimuli/stim2.png',
+            'PRAC_STIM1': 'media/stimuli/prac_stim1.png',
+            'PRAC_STIM2': 'media/stimuli/prac_stim2.png',
             'FEEDBACK': {
                 'NON_SALIENT_1': 'media/stimuli/stim1_feedback_non_salient.png',
                 'NON_SALIENT_2': 'media/stimuli/stim2_feedback_non_salient.png',
                 'SALIENT_1': 'media/stimuli/stim1_feedback_salient.mov',
-                'SALIENT_2': 'media/stimuli/stim2_feedback_salient.mov'
+                'SALIENT_2': 'media/stimuli/stim2_feedback_salient.mov',
+                'PRAC_NON_SALIENT_1': 'media/stimuli/prac_stim1_feedback_non_salient.png',
+                'PRAC_NON_SALIENT_2': 'media/stimuli/prac_stim2_feedback_non_salient.png',
+                'PRAC_SALIENT_1': 'media/stimuli/prac_stim1_feedback_salient.mov',
+                'PRAC_SALIENT_2': 'media/stimuli/prac_stim2_feedback_salient.mov'
             }
         },
         'SOUNDS': {
@@ -116,8 +123,18 @@ class TrialData:
     """Handle data logging for trials"""
     def __init__(self, participant_id: str):
         self.participant_id = participant_id
-        self.data = []
-        
+        self.data = []  # still keep an in-memory copy if needed
+        data_dir = CONFIG['PATHS']['DATA_DIR']
+        os.makedirs(data_dir, exist_ok=True)
+        self.file_path = os.path.join(data_dir, f"{self.participant_id}_data.csv")
+        # Write header once (overwriting any existing file)
+        with open(self.file_path, 'w', newline='') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=[
+                'mode', 'trial', 'choice', 'reaction_time', 'reward',
+                'condition', 'reward_prob_1', 'reward_prob_2', 'payoff_1', 'payoff_2'
+            ])
+            writer.writeheader()
+
     def add_trial(
         self,
         mode: str,
@@ -126,12 +143,12 @@ class TrialData:
         reaction_time: float,
         reward: int,
         condition: int,
-        reward_probs: Tuple[float, float],
-        payoffs: Tuple[int, int]
+        reward_probs: tuple,
+        payoffs: tuple
     ):
-        self.data.append({
+        trial_entry = {
             'mode': mode,
-            'trial': trial_num + 1,  # Convert to 1-based indexing
+            'trial': trial_num + 1,  # 1-based indexing
             'choice': choice,
             'reaction_time': reaction_time,
             'reward': reward,
@@ -140,14 +157,15 @@ class TrialData:
             'reward_prob_2': reward_probs[1],
             'payoff_1': payoffs[0],
             'payoff_2': payoffs[1]
-        })
-        
-    def save(self):
-        """Save collected data to CSV file"""
-        data_dir = CONFIG['PATHS']['DATA_DIR']
-        os.makedirs(data_dir, exist_ok=True)
-        path = os.path.join(data_dir, f"{self.participant_id}_data.csv")
-        pd.DataFrame(self.data).to_csv(path, index=False)
+        }
+        self.data.append(trial_entry)
+        # Append the trial entry to the CSV file immediately
+        with open(self.file_path, 'a', newline='') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=[
+                'mode', 'trial', 'choice', 'reaction_time', 'reward',
+                'condition', 'reward_prob_1', 'reward_prob_2', 'payoff_1', 'payoff_2'
+            ])
+            writer.writerow(trial_entry)
 
 def get_iti() -> float:
     """Calculate inter-trial interval with safety bounds"""
@@ -199,30 +217,34 @@ def show_instructions(win: visual.Window, instructions: list):
         win.flip()
         event.waitKeys(keyList=['space'])
 
-def initialize_stimuli(win: visual.Window) -> dict:
+def initialize_stimuli(win: visual.Window, practice: bool=False) -> dict:
     """Initialize and return all experiment stimuli"""
+    if practice:
+        n = ['PRAC_STIM1','PRAC_STIM2','PRAC_NON_SALIENT_1','PRAC_NON_SALIENT_2','PRAC_SALIENT_1','PRAC_SALIENT_2']
+    else:
+        n = ['STIM1','STIM2','NON_SALIENT_1','NON_SALIENT_2','SALIENT_1','SALIENT_2']
     return {
-        'stim1': visual.ImageStim(win, image=CONFIG['PATHS']['STIMULI']['STIM1'], 
+        'stim1': visual.ImageStim(win, image=CONFIG['PATHS']['STIMULI'][n[0]], 
                                 size=CONFIG['TASK_PARAMS']['STIM_SIZE']),
-        'stim2': visual.ImageStim(win, image=CONFIG['PATHS']['STIMULI']['STIM2'], 
+        'stim2': visual.ImageStim(win, image=CONFIG['PATHS']['STIMULI'][n[1]], 
                                 size=CONFIG['TASK_PARAMS']['STIM_SIZE']),
         'fixation': visual.TextStim(win, text='+', height=0.1, color='white'),
         'feedback_text': visual.TextStim(win, text='', pos=(0, -0.3), color='white', height=0.1),
         'feedback_non_salient': [
-            visual.ImageStim(win, image=CONFIG['PATHS']['STIMULI']['FEEDBACK']['NON_SALIENT_1'],
+            visual.ImageStim(win, image=CONFIG['PATHS']['STIMULI']['FEEDBACK'][n[2]],
                            size=CONFIG['TASK_PARAMS']['STIM_SIZE']),
-            visual.ImageStim(win, image=CONFIG['PATHS']['STIMULI']['FEEDBACK']['NON_SALIENT_2'],
+            visual.ImageStim(win, image=CONFIG['PATHS']['STIMULI']['FEEDBACK'][n[3]],
                            size=CONFIG['TASK_PARAMS']['STIM_SIZE'])
         ],
         'feedback_salient': [
             visual.MovieStim(
-                win, CONFIG['PATHS']['STIMULI']['FEEDBACK']['SALIENT_1'],
+                win, CONFIG['PATHS']['STIMULI']['FEEDBACK'][n[4]],
                 size=CONFIG['TASK_PARAMS']['STIM_SIZE'], movieLib='ffpyplayer',
                 loop=False, noAudio=True, units=win.units, ori=0.0, 
                 anchor='center', opacity=None, contrast=1.0, depth=-2
             ),
             visual.MovieStim(
-                win, CONFIG['PATHS']['STIMULI']['FEEDBACK']['SALIENT_2'],
+                win, CONFIG['PATHS']['STIMULI']['FEEDBACK'][n[5]],
                 size=CONFIG['TASK_PARAMS']['STIM_SIZE'], movieLib='ffpyplayer',
                 loop=False, noAudio=True, units=win.units, ori=0.0, 
                 anchor='center', opacity=None, contrast=1.0, depth=-2
@@ -235,7 +257,9 @@ class BanditExperiment:
     def __init__(self, participant_id: str):
         self.win = initialize_window()
         self.audio = AudioManager()
-        self.stimuli = initialize_stimuli(self.win)
+        self.main_stimuli = initialize_stimuli(self.win, practice=False)
+        self.practice_stimuli = initialize_stimuli(self.win, practice=True)
+        self.stimuli = self.main_stimuli
         self.data = TrialData(participant_id)
         self.vr_schedule = create_vr_schedule()
         self.random_walk_data = pd.read_csv(CONFIG['PATHS']['RANDOM_WALK_DATA'])
@@ -251,13 +275,15 @@ class BanditExperiment:
         
     def run_practice_trials(self):
         """Run practice trials if configured"""
+        self.stimuli = self.practice_stimuli
         for trial_num in range(CONFIG['TASK_PARAMS']['N_PRACTICE_TRIALS']):
             self._run_single_trial(trial_num, "practice")
-            self.total_wins = 0  # Reset wins after practice
+        self.total_wins = 0  # Reset wins after practice
             
     def run_main_trials(self):
         """Run main experimental trials"""
         # Show post-practice instructions
+        self.stimuli = self.main_stimuli
         main_text, space_text = CONFIG['INSTRUCTIONS']['POST_PRACTICE']
         show_instructions(self.win, [(main_text, space_text)])
         
@@ -370,7 +396,7 @@ class BanditExperiment:
             
     def _show_salient_feedback(self, choice: int, stim_mapping: List):
         """Handle salient feedback presentation"""
-        self.audio.fade_background_volume(CONFIG['TASK_PARAMS']['VOLUME']['SALIENT'])
+        self.audio.set_background_volume(CONFIG['TASK_PARAMS']['VOLUME']['SALIENT'])
         self.audio.play_salient_sound()
         
         feedback_vid = self.stimuli['feedback_salient'][choice]
@@ -481,8 +507,7 @@ def main():
         experiment.run_practice_trials()
         experiment.run_main_trials()
         
-        # Save data and show final screen
-        experiment.data.save()
+        # Show final screen
         experiment.show_final_screen()
         
     except Exception as e:
