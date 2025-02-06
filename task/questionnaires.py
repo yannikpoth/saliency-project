@@ -88,12 +88,11 @@ class QuestionnaireApp:
         self.style.configure("Custom.TRadiobutton", font=self.dynamic_font)
         self.style.configure("TButton", font=self.dynamic_font)
 
-
     def show_participant_id(self):
         self.current_frame = ttk.Frame(self.root)
         self.current_frame.pack(pady=50, expand=True)
         
-        ttk.Label(self.current_frame, text="Bitte geben Sie Ihre Teilnehmer-ID ein:", style="Custom.TLabel").pack()
+        ttk.Label(self.current_frame, text="Bitte geben Sie deine Teilnehmer-ID ein:", style="Custom.TLabel").pack()
         self.id_entry = ttk.Entry(self.current_frame, font=self.dynamic_font)
         self.id_entry.pack(pady=10)
         ttk.Button(self.current_frame, text="Start", command=self.start_questionnaires, style="TButton").pack()
@@ -101,12 +100,48 @@ class QuestionnaireApp:
     def start_questionnaires(self):
         self.participant_id = self.id_entry.get()
         if not self.participant_id:
-            messagebox.showerror("Fehler", "Bitte geben Sie eine gültige Teilnehmer-ID ein.")
+            messagebox.showerror("Fehler", "Bitte gib eine gültige Teilnehmer-ID ein.")
             return
         self.current_frame.destroy()
-        self.show_bis()
+        self.show_instructions_general()
+
+    def show_instructions_general(self):
+        self.current_frame = ttk.Frame(self.root)
+        self.current_frame.pack(fill="both", expand=True, padx=150, pady=50)
+        
+        text = (
+            "Willkommen zu unserem Experiment\n\n"
+            "Bevor die eigentliche Aufgabe beginnt, wirst du gebeten, zwei Fragebögen auszufüllen. "
+            "Das Ausfüllen dauert ungefähr 5 bis 10 Minuten. Es gibt keine „richtigen“ oder „falschen“ Antworten, "
+            "wie es in anderen Tests der Fall ist.\n\n"
+            "Bitte beantworte die Fragen ehrlich und nach bestem Wissen. Deine Antworten werden anonym und vertraulich behandelt."
+        )
+        
+        ttk.Label(self.current_frame, text=text, style="Custom.TLabel", wraplength=800, justify="center").pack(pady=20)
+        ttk.Button(self.current_frame, text="Weiter", command=self.show_instructions_bis, style="TButton").pack(pady=10)
+
+    def show_instructions_bis(self):
+        self.current_frame.destroy()
+        self.current_frame = ttk.Frame(self.root)
+        self.current_frame.pack(fill="both", expand=True, padx=150, pady=50)
+        
+        text = (
+            "Anleitung zum BIS-15 Fragebogen\n\n"
+            "Bitte lies jede Aussage aufmerksam durch und wähle die Zahl, die am besten beschreibt, wie häufig diese Aussage auf dich zutrifft.\n"
+            "Versuche, jede Frage so ehrlich und spontan wie möglich zu beantworten.\n\n"
+            "Bewertungsskala:\n"
+            "1 = Selten / Nie\n"
+            "2 = Gelegentlich\n"
+            "3 = Oft\n"
+            "4 = Fast immer / Immer\n\n"
+            "Es gibt keine „richtigen“ oder „falschen“ Antworten. Wähle einfach die Antwort, die am besten zu dir passt."
+        )
+        
+        ttk.Label(self.current_frame, text=text, style="Custom.TLabel", wraplength=800, justify="center").pack(pady=20)
+        ttk.Button(self.current_frame, text="Weiter", command=self.show_bis, style="TButton").pack(pady=10)
 
     def show_bis(self):
+        self.current_frame.destroy()
         self.current_frame = ttk.Frame(self.root)
         self.current_frame.pack(fill="both", expand=True, padx=150, pady=50)
         
@@ -145,13 +180,34 @@ class QuestionnaireApp:
 
     def validate_bis(self):
         if any(var.get() == 0 for var in self.bis_vars):
-            messagebox.showerror("Fehler", "Bitte beantworten Sie alle Fragen im BIS-Fragebogen.")
+            messagebox.showerror("Fehler", "Bitte beantworte alle Fragen im BIS-Fragebogen.")
             return
         self.current_frame.destroy()
-        self.show_sss()
+        self.show_instructions_sss()
+
+    def show_instructions_sss(self):
+        self.current_frame = ttk.Frame(self.root)
+        self.current_frame.pack(fill="both", expand=True, padx=150, pady=50)
+        
+        text = (
+            "Sehr gut!\nNun folgt der zweite Frageogen\n\n"
+            "Anleitung zum Fragebogen\n\n"
+            "Jede der folgenden Aussagen enthält zwei Antwortmöglichkeiten, A und B.\n"
+            "Bitte wähle die Option, die am besten beschreibt, was du bevorzugst oder wie du dich fühlst.\n\n"
+            "In manchen Fällen können beide Optionen teilweise auf dich zutreffen. Wähle dann bitte die Antwort, die deine Präferenz besser widerspiegelt.\n"
+            "Falls du mit keiner der beiden Antworten übereinstimmst, entscheide dich für die, die dir am ehesten zusagt.\n\n"
+            "Wichtige Hinweise:\n"
+            "- Lass keine Frage unbeantwortet.\n"
+            "- Wähle immer nur eine der beiden Antworten (A oder B).\n"
+            "- Es geht um deine persönlichen Vorlieben und Gefühle – nicht darum, wie andere darüber denken oder was allgemein als „richtig“ gilt.\n\n"
+            "Es gibt keine „richtigen“ oder „falschen“ Antworten. Bitte sei ehrlich und beantworte die Fragen möglichst spontan."
+        )
+        
+        ttk.Label(self.current_frame, text=text, style="Custom.TLabel", wraplength=800, justify="center").pack(pady=20)
+        ttk.Button(self.current_frame, text="Weiter", command=self.show_sss, style="TButton").pack(pady=10)
 
     def show_sss(self):
-        # Create a new frame for the SSS questionnaire.
+        self.current_frame.destroy()
         self.current_frame = ttk.Frame(self.root)
         self.current_frame.pack(fill="both", expand=True, padx=150, pady=50)
 
@@ -185,7 +241,6 @@ class QuestionnaireApp:
         canvas.bind("<Enter>", lambda event: canvas.bind_all("<MouseWheel>", _on_mousewheel))
         canvas.bind("<Leave>", lambda event: canvas.unbind_all("<MouseWheel>"))
 
-
         # Populate the scrollable frame with SSS questionnaire items.
         self.sss_vars = [tk.StringVar() for _ in self.sss_items]
         for i, item in enumerate(self.sss_items):
@@ -218,10 +273,9 @@ class QuestionnaireApp:
             style="TButton"
         ).pack(side="bottom", pady=10)
 
-
     def validate_sss(self):
         if any(var.get() == "" for var in self.sss_vars):
-            messagebox.showerror("Fehler", "Bitte beantworten Sie alle Fragen im SSS-Fragebogen.")
+            messagebox.showerror("Fehler", "Bitte beantworte alle Fragen im SSS-Fragebogen.")
             return
         
         self.save_data()
