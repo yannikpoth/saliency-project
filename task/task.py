@@ -56,7 +56,8 @@ CONFIG = {
             'SALIENT_FEEDBACK': 'media/sounds/salient_feedback.wav'
         },
         'DATA_DIR': 'data',
-        'RANDOM_WALK_DATA': 'random_walk_data.csv'
+        'RANDOM_WALK_DATA_MAIN': 'random_walks/csv/main_random_walk.csv',
+        'RANDOM_WALK_DATA_PRACTICE': 'random_walks/csv/prac_random_walk.csv'
     },
     'INSTRUCTIONS': {
         'PRE_PRACTICE': [
@@ -262,7 +263,9 @@ class BanditExperiment:
         self.stimuli = self.main_stimuli
         self.data = TrialData(participant_id)
         self.vr_schedule = create_vr_schedule()
-        self.random_walk_data = pd.read_csv(CONFIG['PATHS']['RANDOM_WALK_DATA'])
+        
+        self.random_walk_data_main = pd.read_csv(CONFIG['PATHS']['RANDOM_WALK_DATA_MAIN'])
+        self.random_walk_data_practice = pd.read_csv(CONFIG['PATHS']['RANDOM_WALK_DATA_PRACTICE'])
         
         # State variables
         self.schedule_index = -1
@@ -293,14 +296,20 @@ class BanditExperiment:
             
     def _run_single_trial(self, trial_num: int, mode: str):
         """Run a single trial with specified mode"""
+        # Select the appropriate random walk data based on mode
+        if mode == "practice":
+            current_rw = self.random_walk_data_practice
+        else:
+            current_rw = self.random_walk_data_main
+
         # Get current trial parameters
         reward_probs = (
-            self.random_walk_data.loc[trial_num, 'mu_1'],
-            self.random_walk_data.loc[trial_num, 'mu_2']
+            current_rw.loc[trial_num, 'mu_1'],
+            current_rw.loc[trial_num, 'mu_2']
         )
         payoffs = (
-            self.random_walk_data.loc[trial_num, 'payoff_1'],
-            self.random_walk_data.loc[trial_num, 'payoff_2']
+            current_rw.loc[trial_num, 'payoff_1'],
+            current_rw.loc[trial_num, 'payoff_2']
         )
         
         # Randomize stimulus positions
