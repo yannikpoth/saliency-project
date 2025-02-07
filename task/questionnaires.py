@@ -30,17 +30,15 @@ class QuestionnaireApp:
         # Bind resize event
         self.root.bind("<Configure>", self.on_resize)
 
-        self.participant_id = sys.argv[1] if len(sys.argv) > 1 else None
-
-        if self.participant_id is None:
-            self.show_participant_id()
-        else:
-            self.show_instructions_general()
-
+        # Initialize variables for frames and questionnaire responses
         self.current_frame = None
         self.bis_vars = []
         self.sss_vars = []
 
+        # Check for a participant ID passed as a command-line argument.
+        self.participant_id = sys.argv[1] if len(sys.argv) > 1 else None
+
+        # Define BIS items
         self.bis_items = [
             {"text": "1. Ich plane meine Vorhaben gründlich.", "reverse": True},
             {"text": "2. Ich mache häufig Dinge ohne vorher darüber nachzudenken.", "reverse": False},
@@ -59,7 +57,7 @@ class QuestionnaireApp:
             {"text": "15. Ich plane für die Zukunft.", "reverse": True},
         ]
 
-        # SSS Items (8 questions)
+        # Define SSS items
         self.sss_items = [
             {"question": "Frage", "a": "Ich liebe ausgelassene, „wilde“ Partys.", "b": "Ich bevorzuge ruhige Partys mit guten Gesprächen.", "subscale": "SSD", "correct": "a"},
             {"question": "Frage", "a": "Mir macht es nichts aus, wenn ich bei Filmen oder Schauspielen weiß, was als nächstes passiert.", "b": "Ich kann mich normalerweise nicht an Filmen oder Schauspielen erfreuen, bei denen ich genau weiß, was als nächstes passiert.", "subscale": "SSB", "correct": "b"},
@@ -70,7 +68,12 @@ class QuestionnaireApp:
             {"question": "Frage", "a": "Ich würde gerne einmal einen Fallschirmabsprung versuchen.", "b": "Ich würde niemals einen Fallschirmabsprung aus einem Flugzeug wagen.", "subscale": "SST", "correct": "a"},
             {"question": "Frage", "a": "Ich finde etwas Interessantes an fast jeder Person, mit der ich rede.", "b": "Ich habe keine Geduld mit trägen oder langweiligen Personen.", "subscale": "SSB", "correct": "b"},
         ]
-        self.show_participant_id()
+        
+        # Display the appropriate frame based on whether a participant ID was provided.
+        if self.participant_id is None:
+            self.show_participant_id()
+        else:
+            self.show_instructions_general()
 
     def on_resize(self, event):
         # Get the current full window dimensions.
