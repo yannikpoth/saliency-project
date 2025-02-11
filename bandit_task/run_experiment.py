@@ -4,10 +4,10 @@ import subprocess
 import sys
 
 def run_experiment(participant_id):
-    # Run task.py and wait for it to finish.
-    subprocess.run([sys.executable, "task.py", participant_id])
-    # After task.py is done, run questionnaires.py.
-    subprocess.run([sys.executable, "questionnaires.py", participant_id])
+    # Run task_logic.py and wait for it to finish.
+    subprocess.run([sys.executable, "task_logic.py", participant_id])
+    # After task.py is done, run questionnaire_survey.py.
+    subprocess.run([sys.executable, "questionnaire_survey.py", participant_id])
 
 def submit_id():
     pid = id_entry.get().strip()

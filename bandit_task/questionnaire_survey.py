@@ -288,11 +288,10 @@ class QuestionnaireApp:
             return
         
         self.save_data()
-        self.launch_experiment()
 
     def save_data(self):
-        os.makedirs('data', exist_ok=True)
-        filename = os.path.join('data', f'{self.participant_id}_questions.csv')
+        os.makedirs('collected_data', exist_ok=True)
+        filename = os.path.join('collected_data', f'{self.participant_id}_questions.csv')
         bis_responses = [var.get() for var in self.bis_vars]
         sss_responses = [var.get() for var in self.sss_vars]
 
@@ -326,9 +325,6 @@ class QuestionnaireApp:
             writer.writerow(headers)
             writer.writerow(data_row)
 
-    def launch_experiment(self):
-        self.root.destroy()
-        subprocess.Popen([sys.executable, "task.py", self.participant_id])
 
 if __name__ == "__main__":
     app = QuestionnaireApp()

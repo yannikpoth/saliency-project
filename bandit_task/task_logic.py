@@ -3,7 +3,7 @@ import numpy as np
 import csv
 import os
 import pandas as pd
-from vr_schedule import create_vr_schedule
+from variable_ratio_schedule import create_vr_schedule
 import pyglet
 import pygame
 from typing import Tuple, Dict, List
@@ -55,9 +55,9 @@ CONFIG = {
             'BACKGROUND': 'media/sounds/ambience.mp3',
             'SALIENT_FEEDBACK': 'media/sounds/salient_feedback.wav'
         },
-        'DATA_DIR': 'data',
-        'RANDOM_WALK_DATA_MAIN': 'random_walks/csv/main_random_walk.csv',
-        'RANDOM_WALK_DATA_PRACTICE': 'random_walks/csv/prac_random_walk.csv'
+        'DATA_DIR': 'collected_data',
+        'RANDOM_WALK_DATA_MAIN': 'random_walk_data/csv/main_random_walk.csv',
+        'RANDOM_WALK_DATA_PRACTICE': 'random_walk_data/csv/prac_random_walk.csv'
     },
     'INSTRUCTIONS': {
         'PRE_PRACTICE': [
