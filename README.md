@@ -175,8 +175,8 @@ of this software and associated documentation files...
 ## Contact
 
 For questions regarding the experiment, analysis, or to request data access, please contact:
-- **Your Name**: [your.email@example.com](mailto:your.email@example.com)
-- Or create an [issue](https://github.com/YourUser/saliency-project/issues) in this repository.
+- **Your Name**: [yannikpoth@me.com](mailto:yannikpoth@me.com)
+- Or create an [issue](https://github.com/yannikpoth/saliency-project/issues) in this repository.
 
 ---
 
