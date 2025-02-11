@@ -1,9 +1,9 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, font
 import csv
-import subprocess
 import sys
 import os
+from pathlib import Path
 
 class QuestionnaireApp:
     def __init__(self):
@@ -288,10 +288,35 @@ class QuestionnaireApp:
             return
         
         self.save_data()
+        self.show_thank_you()
+        # Optional: if you want to terminate the experiment or wait for further instructions,
+        # you can remove any further calls here.
+
+    def show_thank_you(self):
+        # Destroy the current frame (the SSS questionnaire)
+        self.current_frame.destroy()
+        # Create a new frame with the same dimensions as before.
+        self.current_frame = ttk.Frame(self.root)
+        self.current_frame.pack(fill="both", expand=True, padx=150, pady=50)
+        
+        # Create a new, larger font (e.g., increase the base font size by 6 points).
+        thank_font = font.Font(family="Arial", size=self.base_font_size + 6, weight="bold")
+        
+        thank_text = (
+            "Vielen Dank!\n\n"
+            "Du hast das Experiment erfolgreich abgeschlossen. "
+            "Die Versuchsleiterin bzw. der Versuchsleiter wird sich nun an dich wenden."
+        )
+        
+        # Display the thank-you message using the larger font.
+        ttk.Label(self.current_frame, text=thank_text, font=thank_font, wraplength=800, justify="center").pack(pady=20)
 
     def save_data(self):
-        os.makedirs('collected_data', exist_ok=True)
-        filename = os.path.join('collected_data', f'{self.participant_id}_questions.csv')
+        base_dir = Path(__file__).parent
+        data_dir = base_dir / "collected_data"
+        data_dir.mkdir(exist_ok=True)
+        filename = data_dir / f"{self.participant_id}_questions.csv"
+        
         bis_responses = [var.get() for var in self.bis_vars]
         sss_responses = [var.get() for var in self.sss_vars]
 

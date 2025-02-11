@@ -2,14 +2,20 @@ from psychopy import visual, core, event, gui, data
 import numpy as np
 import csv
 import os
+import sys
+from pathlib import Path
 import pandas as pd
 from variable_ratio_schedule import create_vr_schedule
 import pyglet
 import pygame
 from typing import Tuple, Dict, List
 
-
 # ================================= CONFIGURATION =================================
+BASE_DIR = Path(__file__).parent
+MEDIA_DIR = BASE_DIR / "media"
+STIMULI_DIR = MEDIA_DIR / "stimuli"
+SOUNDS_DIR = MEDIA_DIR / "sounds"
+
 CONFIG = {
     'TASK_PARAMS': {
         'N_PRACTICE_TRIALS': 15,
@@ -36,28 +42,28 @@ CONFIG = {
     },
     'PATHS': {
         'STIMULI': {
-            'STIM1': 'media/stimuli/stim1.png',
-            'STIM2': 'media/stimuli/stim2.png',
-            'PRAC_STIM1': 'media/stimuli/prac_stim1.png',
-            'PRAC_STIM2': 'media/stimuli/prac_stim2.png',
+            'STIM1': str(STIMULI_DIR / "stim1.png"),
+            'STIM2': str(STIMULI_DIR / "stim2.png"),
+            'PRAC_STIM1': str(STIMULI_DIR / "prac_stim1.png"),
+            'PRAC_STIM2': str(STIMULI_DIR / "prac_stim2.png"),
             'FEEDBACK': {
-                'NON_SALIENT_1': 'media/stimuli/stim1_feedback_non_salient.png',
-                'NON_SALIENT_2': 'media/stimuli/stim2_feedback_non_salient.png',
-                'SALIENT_1': 'media/stimuli/stim1_feedback_salient.mov',
-                'SALIENT_2': 'media/stimuli/stim2_feedback_salient.mov',
-                'PRAC_NON_SALIENT_1': 'media/stimuli/prac_stim1_feedback_non_salient.png',
-                'PRAC_NON_SALIENT_2': 'media/stimuli/prac_stim2_feedback_non_salient.png',
-                'PRAC_SALIENT_1': 'media/stimuli/prac_stim1_feedback_salient.mov',
-                'PRAC_SALIENT_2': 'media/stimuli/prac_stim2_feedback_salient.mov'
+                'NON_SALIENT_1': str(STIMULI_DIR / "stim1_feedback_non_salient.png"),
+                'NON_SALIENT_2': str(STIMULI_DIR / "stim2_feedback_non_salient.png"),
+                'SALIENT_1': str(STIMULI_DIR / "stim1_feedback_salient.mov"),
+                'SALIENT_2': str(STIMULI_DIR / "stim2_feedback_salient.mov"),
+                'PRAC_NON_SALIENT_1': str(STIMULI_DIR / "prac_stim1_feedback_non_salient.png"),
+                'PRAC_NON_SALIENT_2': str(STIMULI_DIR / "prac_stim2_feedback_non_salient.png"),
+                'PRAC_SALIENT_1': str(STIMULI_DIR / "prac_stim1_feedback_salient.mov"),
+                'PRAC_SALIENT_2': str(STIMULI_DIR / "prac_stim2_feedback_salient.mov")
             }
         },
         'SOUNDS': {
-            'BACKGROUND': 'media/sounds/ambience.mp3',
-            'SALIENT_FEEDBACK': 'media/sounds/salient_feedback.wav'
+            'BACKGROUND': str(SOUNDS_DIR / "ambience.mp3"),
+            'SALIENT_FEEDBACK': str(SOUNDS_DIR / "salient_feedback.wav")
         },
-        'DATA_DIR': 'collected_data',
-        'RANDOM_WALK_DATA_MAIN': 'random_walk_data/csv/main_random_walk.csv',
-        'RANDOM_WALK_DATA_PRACTICE': 'random_walk_data/csv/prac_random_walk.csv'
+        'DATA_DIR': str(BASE_DIR / "collected_data"),
+        'RANDOM_WALK_DATA_MAIN': str(BASE_DIR / "random_walk_data/csv/main_random_walk.csv"),
+        'RANDOM_WALK_DATA_PRACTICE': str(BASE_DIR / "random_walk_data/csv/prac_random_walk.csv")
     },
     'INSTRUCTIONS': {
         'PRE_PRACTICE': [
