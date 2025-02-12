@@ -484,7 +484,7 @@ class BanditExperiment:
         choice = 0 if ((key == 'left' and stim_mapping[0].pos[0] < 0) or (key == 'right' and stim_mapping[0].pos[0] > 0)) else 1
         return choice, rt, False
 
-    def _process_outcome(self, choice: int, stim_mapping: List, payoffs: Tuple[int, int]) -> Tuple[bool, str]:
+    def _process_outcome(self, choice: int, payoffs: Tuple[int, int]) -> Tuple[bool, str]:
         """
         Determine the outcome of the trial and assign a feedback condition.
 
