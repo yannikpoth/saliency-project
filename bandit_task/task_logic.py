@@ -13,17 +13,17 @@ Usage:
     If no argument is provided, the script will prompt for input in the terminal.
 """
 
-from psychopy import visual, core, event, gui, data
-import numpy as np
 import csv
 import os
 import sys
 from pathlib import Path
+from typing import List, Tuple
+import numpy as np
 import pandas as pd
-from variable_ratio_schedule import create_vr_schedule
-import pyglet
 import pygame
-from typing import Tuple, List
+import pyglet
+from psychopy import core, event, visual
+from variable_ratio_schedule import create_vr_schedule
 
 # ================================= CONFIGURATION =================================
 BASE_DIR = Path(__file__).parent
@@ -185,7 +185,7 @@ class TrialData:
         os.makedirs(data_dir, exist_ok=True)
         self.file_path = os.path.join(data_dir, f"{self.participant_id}_data.csv")
         # Write header once, overwriting any existing file
-        with open(self.file_path, 'w', newline='') as csvfile:
+        with open(self.file_path, 'w', newline='', encoding='utf-8') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=[
                 'mode', 'trial', 'choice', 'reaction_time', 'reward',
                 'condition', 'reward_prob_1', 'reward_prob_2', 'payoff_1', 'payoff_2'
@@ -230,7 +230,7 @@ class TrialData:
         }
         self.data.append(trial_entry)
         # Append the trial entry to the CSV file immediately
-        with open(self.file_path, 'a', newline='') as csvfile:
+        with open(self.file_path, 'a', newline='', encoding='utf-8') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=[
                 'mode', 'trial', 'choice', 'reaction_time', 'reward',
                 'condition', 'reward_prob_1', 'reward_prob_2', 'payoff_1', 'payoff_2'
@@ -285,9 +285,9 @@ def initialize_window() -> visual.Window:
         units='height',
         allowStencil=False,
         colorSpace='rgb',
-        backgroundImage='', 
+        backgroundImage='',
         backgroundFit='none',
-        blendMode='avg', 
+        blendMode='avg',
         useFBO=True,
         checkTiming=False
     )
@@ -304,7 +304,7 @@ def show_instructions(win: visual.Window, instructions: list):
     for main_text, space_text in instructions:
         text_stim = visual.TextStim(win, text=main_text, **CONFIG['TASK_PARAMS']['TEXT_PARAMS'])
         space_prompt = visual.TextStim(
-            win, text=space_text, 
+            win, text=space_text,
             pos=(0, -0.3), color='yellow', height=0.05
         )
         text_stim.draw()
@@ -340,13 +340,13 @@ def initialize_stimuli(win: visual.Window, practice: bool=False) -> dict:
             visual.MovieStim(
                 win, CONFIG['PATHS']['STIMULI']['FEEDBACK'][n[4]],
                 size=CONFIG['TASK_PARAMS']['STIM_SIZE'], movieLib='ffpyplayer',
-                loop=False, noAudio=True, units=win.units, ori=0.0, 
+                loop=False, noAudio=True, units=win.units, ori=0.0,
                 anchor='center', opacity=None, contrast=1.0, depth=-2
             ),
             visual.MovieStim(
                 win, CONFIG['PATHS']['STIMULI']['FEEDBACK'][n[5]],
                 size=CONFIG['TASK_PARAMS']['STIM_SIZE'], movieLib='ffpyplayer',
-                loop=False, noAudio=True, units=win.units, ori=0.0, 
+                loop=False, noAudio=True, units=win.units, ori=0.0,
                 anchor='center', opacity=None, contrast=1.0, depth=-2
             )
         ]
@@ -448,7 +448,7 @@ class BanditExperiment:
             return
 
         # Process trial outcome and determine feedback condition
-        win_this_trial, feedback_cond = self._process_outcome(choice, stim_mapping, payoffs)
+        win_this_trial, feedback_cond = self._process_outcome(choice, payoffs)
         # Display feedback accordingly
         self._show_feedback(choice, stim_mapping, feedback_cond, win_this_trial)
         # Log trial data for later analysis
