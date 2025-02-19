@@ -1,0 +1,3 @@
+mode,trial,choice,reaction_time,reward,condition,reward_prob_1,reward_prob_2,payoff_1,payoff_2
+practice,1,1,0.8635460833029356,1,0,0.6048813378285252,0.5895259176684322,1,1
+practice,2,1,0.6374035000044387,0,0,0.6450662699958258,0.532447233773351,0,0

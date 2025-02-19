@@ -40,6 +40,7 @@ CONFIG = {
         'MAX_RESPONSE_TIME': 5,
         'FEEDBACK_DURATION': 3,
         'BONUS_MAX_EUR': 3.0,
+        'FORCED_SALIENCY': True,    # force salient condition after 10 trials w/o saliency
         'STIM_SIZE': (0.4, 0.4),
         'STIM_POSITIONS': [(-0.4, 0), (0.4, 0)],
         'TEXT_PARAMS': {
@@ -393,6 +394,7 @@ class BanditExperiment:
         """
         self.stimuli = self.practice_stimuli
         for trial_num in range(CONFIG['TASK_PARAMS']['N_PRACTICE_TRIALS']):
+            self.trial_counter += 1
             self._run_single_trial(trial_num, "practice")
         self.total_wins = 0  # Reset wins after practice
 
@@ -404,6 +406,7 @@ class BanditExperiment:
         main_text, space_text = CONFIG['INSTRUCTIONS']['POST_PRACTICE']
         show_instructions(self.win, [(main_text, space_text)])
         for trial_num in range(CONFIG['TASK_PARAMS']['N_MAIN_TRIALS']):
+            self.trial_counter += 1
             self._run_single_trial(trial_num, "main")
 
     def _run_single_trial(self, trial_num: int, mode: str):
@@ -515,10 +518,13 @@ class BanditExperiment:
         Returns:
             str: "salient" if conditions are met, otherwise "non-salient".
         """
-        if self.trial_counter >= 10 or self.vr_schedule[self.schedule_index] == 1:
-            self.trial_counter = 0
-            return "salient"
-        self.trial_counter += 1
+        if CONFIG['TASK_PARAMS']['FORCED_SALIENCY']:
+            if  self.trial_counter >= 10 or self.vr_schedule[self.schedule_index] == 1:
+                self.trial_counter = 0
+                return "salient"
+        else:
+            if  self.vr_schedule[self.schedule_index] == 1:
+                return "salient"
         return "non-salient"
 
     def _show_feedback(self, choice: int, stim_mapping: List, feedback_cond: str, win: bool):
