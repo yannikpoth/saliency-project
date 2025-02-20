@@ -23,7 +23,7 @@ import pandas as pd
 import pygame
 import pyglet
 from psychopy import core, event, visual
-from variable_ratio_schedule import create_vr_schedule
+
 
 # ================================= CONFIGURATION =================================
 BASE_DIR = Path(__file__).parent
@@ -40,7 +40,7 @@ CONFIG = {
         'MAX_RESPONSE_TIME': 5,
         'FEEDBACK_DURATION': 3,
         'BONUS_MAX_EUR': 3.0,
-        'FORCED_SALIENCY': True,    # force salient condition after 10 trials w/o saliency
+        'FORCED_SALIENCY': False,    # force salient condition after 10 trials w/o saliency
         'STIM_SIZE': (0.4, 0.4),
         'STIM_POSITIONS': [(-0.4, 0), (0.4, 0)],
         'TEXT_PARAMS': {
@@ -78,8 +78,9 @@ CONFIG = {
             'SALIENT_FEEDBACK': str(SOUNDS_DIR / "salient_feedback.wav")
         },
         'DATA_DIR': str(BASE_DIR / "collected_data"),
-        'RANDOM_WALK_DATA_MAIN': str(BASE_DIR / "random_walk_data/csv/main_random_walk.csv"),
-        'RANDOM_WALK_DATA_PRACTICE': str(BASE_DIR / "random_walk_data/csv/prac_random_walk.csv")
+        'RANDOM_WALK_DATA_MAIN': str(BASE_DIR / "task_data/random_walk/csv/main_random_walk.csv"),
+        'RANDOM_WALK_DATA_PRACTICE': str(BASE_DIR / "task_data/random_walk/csv/prac_random_walk.csv"),
+        'VARIABLE_RATIO_SCHEDULE': str(BASE_DIR / "task_data/variable_ratio_schedule/vr_schedule.csv")
     },
     'INSTRUCTIONS': {
         'PRE_PRACTICE': [
@@ -373,7 +374,7 @@ class BanditExperiment:
         self.practice_stimuli = initialize_stimuli(self.win, practice=True)
         self.stimuli = self.main_stimuli
         self.data = TrialData(participant_id)
-        self.vr_schedule = create_vr_schedule()
+        self.vr_schedule = pd.read_csv(CONFIG['PATHS']['VARIABLE_RATIO_SCHEDULE'])['schedule'].tolist()
 
         self.random_walk_data_main = pd.read_csv(CONFIG['PATHS']['RANDOM_WALK_DATA_MAIN'])
         self.random_walk_data_practice = pd.read_csv(CONFIG['PATHS']['RANDOM_WALK_DATA_PRACTICE'])
