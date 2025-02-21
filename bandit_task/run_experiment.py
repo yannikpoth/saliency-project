@@ -1,8 +1,9 @@
+#!/usr/bin/env python3
 """
 run_experiment.py
 
-A simple GUI interface for capturing a participant's ID and running the bandit task 
-(`task_logic.py`) followed by the questionnaire script (`questionnaire_survey.py`). 
+A simple GUI interface for capturing a participant's ID and running 
+two scripts in sequence: 'task_logic.py' then 'questionnaire_survey.py'.
 """
 
 import tkinter as tk
@@ -11,48 +12,54 @@ from pathlib import Path
 import subprocess
 import sys
 
-
 def run_experiment(participant_id):
     """
-    Run the main bandit task and questionnaire scripts for a given participant.
-
-    This function builds absolute paths to the `task_logic.py` and 
-    `questionnaire_survey.py` scripts—both located in the same directory 
-    as `run_experiment.py`—then executes them sequentially, passing the 
-    participant ID as a command-line argument.
-
-    Args:
-        participant_id (str): Unique identifier for the participant.
+    Run the main bandit task and then the questionnaire script for a given participant.
+    Capture the 'bonus' from the task script's output and pass it along to the questionnaire.
     """
     current_script_dir = Path(__file__).parent
 
-    # Build absolute paths to the other scripts
     task_script = current_script_dir / "task_logic.py"
     questionnaire_script = current_script_dir / "questionnaire_survey.py"
 
-    # Run the bandit task
-    subprocess.run([sys.executable, str(task_script), participant_id])
+    # 1) Run the bandit task, capturing its output
+    task_proc = subprocess.run(
+        [sys.executable, str(task_script), participant_id],
+        capture_output=True,
+        text=True
+    )
 
-    # Run the questionnaire
-    subprocess.run([sys.executable, str(questionnaire_script), participant_id])
+    # Check for errors
+    if task_proc.returncode != 0:
+        print("Error running task_logic.py:", task_proc.stderr)
+        return
+
+    # 2) Parse the bonus from stdout (assuming it's last line)
+    lines = task_proc.stdout.strip().splitlines()
+    bonus_str = lines[-1]
+    # Optionally handle an empty or invalid bonus
+    if not bonus_str:
+        bonus_str = "0"
+
+    # 3) Pass the participant ID and the bonus to the questionnaire script
+    questionnaire_proc = subprocess.run(
+        [sys.executable, str(questionnaire_script), participant_id, bonus_str]
+    )
+    print(questionnaire_proc)
+    if questionnaire_proc.returncode != 0:
+        print("Error running questionnaire_survey.py")
 
 
 def submit_id():
     """
     Handle the event when the user submits the participant ID via the GUI.
-
-    Retrieves the participant ID from the input field, validates it, 
-    and calls `run_experiment(pid)`. If the ID is empty, shows an 
-    error message dialog.
     """
     pid = id_entry.get().strip()
     if not pid:
         messagebox.showerror("Error", "Please enter a valid Participant ID.")
         return
-    # Close the GUI window before running the experiment
     root.destroy()
     run_experiment(pid)
-
 
 # ---------------------------
 # Main GUI Setup
