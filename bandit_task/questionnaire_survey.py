@@ -2,17 +2,17 @@
 questionnaire_survey.py
 
 This module implements a Tkinter-based GUI application for administering 
-two questionnaires (BIS-15 and SSS) as part of the Saliency Project study.
-It collects participant responses, validates them, and saves the results 
-to a CSV file in the collected_data folder.
+two questionnaires (BIS-15 and SSS) plus an open-ended questionnaire as part 
+of the Saliency Project study. It collects participant responses, validates them, 
+and saves the results to a CSV file in the collected_data folder.
 
 Usage:
     As an importable module:
         from questionnaire_survey import run_questionnaire
-        run_questionnaire("PARTICIPANT_ID")
+        run_questionnaire("PARTICIPANT_ID", bonus_value)
     
     Standalone:
-        python questionnaire_survey.py [participant_id]
+        python questionnaire_survey.py <participant_id> <bonus>
     If no participant_id is provided, the GUI will prompt for one.
 """
 
@@ -20,16 +20,16 @@ import tkinter as tk
 from tkinter import ttk, messagebox, font
 import csv
 import sys
+import os
 from pathlib import Path
-
 
 class QuestionnaireApp:
     """
     A class representing the questionnaire application.
     
     This class creates a full-screen Tkinter window, displays instructions,
-    and presents the BIS-15 and SSS questionnaires. Participant responses are
-    collected, validated, and saved to disk.
+    and presents the BIS-15, SSS, and an open-ended questionnaire. Participant 
+    responses are collected, validated, and saved to disk in a single CSV file.
     """
     def __init__(self, participant_id=None, bonus=None):
         # Initialize main Tkinter window.
@@ -60,7 +60,8 @@ class QuestionnaireApp:
         self.current_frame = None
         self.bis_vars = []  # List of IntVar for BIS responses.
         self.sss_vars = []  # List of StringVar for SSS responses.
-
+        self.last_question_data = {}  # Dictionary for last questionnaire responses.
+        
         # Accept the participant ID as an argument.
         self.participant_id = participant_id
         self.bonus = bonus
@@ -96,7 +97,34 @@ class QuestionnaireApp:
             {"question": "Frage", "a": "Ich finde etwas Interessantes an fast jeder Person, mit der ich rede.", "b": "Ich habe keine Geduld mit trägen oder langweiligen Personen.", "subscale": "SSB", "correct": "b"},
         ]
         
-        self.show_instructions_general()
+        # Define the last (open-ended) questionnaire.
+        # The questions are later saved horizontally with the following column names:
+        # 1: q-open_goal_of_study
+        # 2: q-open_noticable_aspects
+        # 3: q-choice_noticed_saliency
+        # 4: q-choice_saliency_strength
+        # 5: q-choice_saliency_impact
+        # 6: q-open_saliency_impact
+        # 7: q-choice_saliency_value
+        # 8: q-choice_win_motivation
+        # 9: q-open_comments
+        self.last_questions = [
+            {"number": 1, "text": "Was glaubst du, war das Ziel dieser Studie?", "type": "open"},
+            {"number": 2, "text": "Welche Aspekte der Aufgabe fandest du besonders auffällig?", "type": "open"},
+            {"number": 3, "text": "Hast du während der Aufgabe bemerkt, dass einige Gewinnmeldungen mit speziellen audiovisuellen Feedbackreizen verbunden waren?", "type": "radio", "options": ["Ja", "Nein"]},
+            {"number": 4, "text": "Falls ja, wie hast du die speziellen audiovisuellen Feedbackreize wahrgenommen?", "type": "radio", "options": ["Sehr auffällig", "Moderat auffällig", "Kaum auffällig", "Gar nicht auffällig"]},
+            {"number": 5, "text": "Glaubst du, dass die speziellen audiovisuellen Feedbackreize dein Entscheidungsverhalten beeinflusst haben?", "type": "radio", "options": ["Ja", "Nein", "Unsicher"]},
+            {"number": 6, "text": "Falls ja, in welcher Weise haben die speziellen audiovisuellen Feedbackreize dein Entscheidungsverhalten beeinflusst?", "type": "open"},
+            {"number": 7, "text": "Hast du das Gefühl, dass du aufgrund der speziellen Feedbackreize anders eingeschätzt hast, welche Auswahloption besser ist?", "type": "radio", "options": ["Ja", "Nein", "Unsicher"]},
+            {"number": 8, "text": "Wie motiviert warst du, während der Aufgabe den höchstmöglichen Gesamtgewinn zu erzielen?", "type": "radio", "options": ["Sehr motiviert", "Moderat motiviert", "Wenig motiviert", "Gar nicht motiviert"]},
+            {"number": 9, "text": "Hast du noch weitere Anmerkungen oder Feedback zur Studie?", "type": "open"}
+        ]
+        
+        # If a participant ID was provided, skip the prompt.
+        if self.participant_id:
+            self.show_instructions_general()
+        else:
+            self.show_participant_id()
 
     def on_resize(self, event):
         """
@@ -115,9 +143,20 @@ class QuestionnaireApp:
         self.style.configure("Custom.TRadiobutton", font=self.dynamic_font)
         self.style.configure("TButton", font=self.dynamic_font)
 
+    def show_participant_id(self):
+        """
+        Show a frame prompting for the participant's ID.
+        """
+        self.current_frame = ttk.Frame(self.root)
+        self.current_frame.pack(pady=50, expand=True)
+        ttk.Label(self.current_frame, text="Bitte gib deine Teilnehmer-ID ein:", style="Custom.TLabel").pack()
+        self.id_entry = ttk.Entry(self.current_frame, font=self.dynamic_font)
+        self.id_entry.pack(pady=10)
+        ttk.Button(self.current_frame, text="Start", command=self.start_questionnaires, style="TButton").pack()
+
     def start_questionnaires(self):
         """
-        Retrieve the participant ID from the entry field and proceed to instructions.
+        Retrieve the participant ID and proceed to the general instructions.
         """
         self.participant_id = self.id_entry.get().strip()
         if not self.participant_id:
@@ -133,10 +172,9 @@ class QuestionnaireApp:
         self.current_frame = ttk.Frame(self.root)
         self.current_frame.pack(fill="both", expand=True, padx=150, pady=50)
         text = (
-            "Willkommen zu unserem Experiment\n\n"
-            "Bevor die eigentliche Aufgabe beginnt, wirst du gebeten, zwei Fragebögen auszufüllen. "
-            "Das Ausfüllen dauert ungefähr 5 bis 10 Minuten. Es gibt keine „richtigen“ oder „falschen“ Antworten, "
-            "wie es in anderen Tests der Fall ist.\n\n"
+            "Sehr gut, du hast die Aufgabe erfolgreich abgeschlossen.\n\n"
+            "Nun bitten wir dich, noch drei kurze Fragebögen auszufüllen. Das Ausfüllen dauert ungefähr 5 bis 10 Minuten. "
+            "Es gibt keine ‚richtigen‘ oder ‚falschen‘ Antworten, wie es in anderen Tests der Fall ist.\n\n"
             "Bitte beantworte die Fragen ehrlich und nach bestem Wissen. Deine Antworten werden anonym und vertraulich behandelt."
         )
         ttk.Label(self.current_frame, text=text, style="Custom.TLabel", wraplength=800, justify="center").pack(pady=20)
@@ -165,7 +203,7 @@ class QuestionnaireApp:
 
     def show_bis(self):
         """
-        Display the BIS questionnaire with response options.
+        Display the BIS questionnaire.
         """
         self.current_frame.destroy()
         self.current_frame = ttk.Frame(self.root)
@@ -174,24 +212,18 @@ class QuestionnaireApp:
         container.pack(fill="both", expand=True)
         headers = ["Frage", "1 - selten/nie", "2 - gelegentlich", "3 - oft", "4 - fast immer/immer"]
         for col, header in enumerate(headers):
-            ttk.Label(container, text=header, style="CustomBold.TLabel",
-                      anchor="center").grid(row=0, column=col, padx=10, pady=5, sticky="nsew")
+            ttk.Label(container, text=header, style="CustomBold.TLabel", anchor="center").grid(row=0, column=col, padx=10, pady=5, sticky="nsew")
             container.columnconfigure(col, weight=1)
         self.bis_vars = [tk.IntVar() for _ in self.bis_items]
         for row_idx, item in enumerate(self.bis_items, start=1):
-            ttk.Label(container, text=item["text"], wraplength=400,
-                      style="Custom.TLabel", anchor="w").grid(row=row_idx, column=0, sticky="w", padx=10, pady=5)
+            ttk.Label(container, text=item["text"], wraplength=400, style="Custom.TLabel", anchor="w").grid(row=row_idx, column=0, sticky="w", padx=10, pady=5)
             for col_idx in range(1, 5):
                 rb_frame = ttk.Frame(container)
                 rb_frame.grid(row=row_idx, column=col_idx, padx=10, pady=5, sticky="nsew")
-                ttk.Radiobutton(rb_frame, variable=self.bis_vars[row_idx-1],
-                                value=col_idx, style="Custom.TRadiobutton")\
-                                .place(relx=0.5, rely=0.5, anchor="center")
-                
+                ttk.Radiobutton(rb_frame, variable=self.bis_vars[row_idx-1], value=col_idx, style="Custom.TRadiobutton").place(relx=0.5, rely=0.5, anchor="center")
         btn_frame = ttk.Frame(self.current_frame)
         btn_frame.pack(pady=10)
-        ttk.Button(btn_frame, text="Weiter zum nächsten Fragebogen",
-                   command=self.validate_bis, style="TButton").pack()
+        ttk.Button(btn_frame, text="Weiter zum nächsten Fragebogen", command=self.validate_bis, style="TButton").pack()
 
     def validate_bis(self):
         """
@@ -227,7 +259,7 @@ class QuestionnaireApp:
 
     def show_sss(self):
         """
-        Display the SSS questionnaire in a scrollable frame.
+        Display the SSS questionnaire.
         """
         self.current_frame.destroy()
         self.current_frame = ttk.Frame(self.root)
@@ -252,54 +284,95 @@ class QuestionnaireApp:
         for i, item in enumerate(self.sss_items):
             question_frame = ttk.Frame(scrollable_frame)
             question_frame.pack(fill="x", pady=10)
-            ttk.Label(question_frame, text=f"{i+1}. {item['question']}",
-                      style="CustomBold.TLabel").pack(anchor="w")
-            ttk.Radiobutton(question_frame, text=item["a"],
-                            variable=self.sss_vars[i],
-                            value="a", style="Custom.TRadiobutton")\
-                            .pack(anchor="w", padx=20, pady=5)
-            ttk.Radiobutton(question_frame, text=item["b"],
-                            variable=self.sss_vars[i],
-                            value="b", style="Custom.TRadiobutton")\
-                            .pack(anchor="w", padx=20, pady=5)
-        ttk.Button(self.current_frame, text="Fragebogen abschließen",
-                   command=self.validate_sss, style="TButton")\
-                   .pack(side="bottom", pady=10)
+            ttk.Label(question_frame, text=f"{i+1}. {item['question']}", style="CustomBold.TLabel").pack(anchor="w")
+            ttk.Radiobutton(question_frame, text=item["a"], variable=self.sss_vars[i], value="a", style="Custom.TRadiobutton").pack(anchor="w", padx=20, pady=5)
+            ttk.Radiobutton(question_frame, text=item["b"], variable=self.sss_vars[i], value="b", style="Custom.TRadiobutton").pack(anchor="w", padx=20, pady=5)
+        ttk.Button(self.current_frame, text="Weiter", command=self.validate_sss, style="TButton").pack(side="bottom", pady=10)
 
     def validate_sss(self):
         """
-        Validate that all SSS questions have been answered and then save data.
+        Validate that all SSS questions have been answered and then move to the last questionnaire.
         """
         if any(var.get() == "" for var in self.sss_vars):
             messagebox.showerror("Fehler", "Bitte beantworte alle Fragen im SSS-Fragebogen.")
             return
-        self.save_data()
-        self.show_thank_you()
+        self.current_frame.destroy()
+        self.show_last_questionnaire()
 
-    def show_thank_you(self):
+    def show_last_questionnaire(self):
         """
-        Display a final thank-you screen.
+        Display the last (open-ended) questionnaire.
         """
         self.current_frame.destroy()
         self.current_frame = ttk.Frame(self.root)
         self.current_frame.pack(fill="both", expand=True, padx=150, pady=50)
-        thank_font = font.Font(family="Arial", size=self.base_font_size + 6, weight="bold")
-        thank_text = (
-            "Vielen Dank!\n\n"
-            "Du hast das Experiment erfolgreich abgeschlossen. "
-            f"Die Versuchsleiterin bzw. der Versuchsleiter wird sich nun an dich wenden und dir deine Vergütung sowie deinen erspielten Gewinn in Höhe von {self.bonus:.2f}€ auszahlen."
-        )
-        ttk.Label(self.current_frame, text=thank_text, font=thank_font,
-                  wraplength=800, justify="center").pack(pady=20)
+        canvas_container = ttk.Frame(self.current_frame)
+        canvas_container.pack(side="top", fill="both", expand=True)
+        canvas = tk.Canvas(canvas_container)
+        v_scrollbar = ttk.Scrollbar(canvas_container, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=v_scrollbar.set)
+        canvas.pack(side="left", fill="both", expand=True)
+        v_scrollbar.pack(side="right", fill="y")
+        scrollable_frame = ttk.Frame(canvas)
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        def on_frame_configure(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        scrollable_frame.bind("<Configure>", on_frame_configure)
+        def _on_mousewheel(event):
+            canvas.yview_scroll(-1 * int(event.delta/120), "units")
+        canvas.bind("<Enter>", lambda event: canvas.bind_all("<MouseWheel>", _on_mousewheel))
+        canvas.bind("<Leave>", lambda event: canvas.unbind_all("<MouseWheel>"))
+        self.last_question_vars = {}
+        for q in self.last_questions:
+            q_frame = ttk.Frame(scrollable_frame)
+            q_frame.pack(fill="x", pady=10)
+            ttk.Label(q_frame, text=f"{q['number']}. {q['text']}", style="CustomBold.TLabel", wraplength=800, justify="left").pack(anchor="w", pady=2)
+            if q["type"] == "open":
+                text_widget = tk.Text(q_frame, height=4, width=100, font=self.dynamic_font, wrap="word")
+                text_widget.pack(pady=5)
+                self.last_question_vars[q["number"]] = text_widget
+            elif q["type"] == "radio":
+                var = tk.StringVar()
+                self.last_question_vars[q["number"]] = var
+                options_frame = ttk.Frame(q_frame)
+                options_frame.pack(anchor="w", pady=2)
+                for option in q["options"]:
+                    ttk.Radiobutton(options_frame, text=option, variable=var, value=option, style="Custom.TRadiobutton").pack(side="left", padx=10)
+        ttk.Button(self.current_frame, text="Fragebogen abschließen", command=self.validate_last_questionnaire, style="TButton").pack(side="bottom", pady=10)
 
-    def save_data(self):
+    def validate_last_questionnaire(self):
         """
-        Save responses from both questionnaires to a CSV file.
+        Validate and collect responses from the last questionnaire, then save all data.
+        """
+        last_responses = {}
+        for q in self.last_questions:
+            if q["type"] == "open":
+                widget = self.last_question_vars[q["number"]]
+                response = widget.get("1.0", "end-1c").strip()
+                if not response:
+                    messagebox.showerror("Fehler", f"Bitte beantworte Frage {q['number']}.")
+                    return
+                last_responses[q["number"]] = response
+            elif q["type"] == "radio":
+                response = self.last_question_vars[q["number"]].get().strip()
+                if not response:
+                    messagebox.showerror("Fehler", f"Bitte wähle eine Antwort für Frage {q['number']}.")
+                    return
+                last_responses[q["number"]] = response
+        self.last_question_data = last_responses
+        self.save_all_data()
+        self.show_thank_you()
+
+    def save_all_data(self):
+        """
+        Save BIS, SSS, and last questionnaire responses into one CSV file.
+        The last questionnaire responses are saved horizontally with the desired column names.
         """
         base_dir = Path(__file__).parent
         data_dir = base_dir / "collected_data"
         data_dir.mkdir(exist_ok=True)
-        filename = data_dir / f"{self.participant_id}_questions.csv"
+        filename = data_dir / f"{self.participant_id}_questionnaire_data.csv"
+
         bis_responses = [var.get() for var in self.bis_vars]
         sss_responses = [var.get() for var in self.sss_vars]
         bis_total = 0
@@ -315,18 +388,55 @@ class QuestionnaireApp:
                 ss_scores[item["subscale"]] += 1
         ss_total = (ss_scores["SST"] + ss_scores["SSE"] + ss_scores["SSD"] + ss_scores["SSB"]) / 4
         ss_percent = ss_total * 25
-        headers = ["participant_id"] + \
-                  [f"bis_{i+1}" for i in range(len(self.bis_items))] + \
-                  [f"sss_{i+1}" for i in range(len(self.sss_items))] + \
-                  ["bis_total", "SST", "SSE", "SSD", "SSB", "ss_total", "ss_percent"]
-        data_row = [self.participant_id] + bis_responses + sss_responses + [bis_total,
-                    ss_scores["SST"], ss_scores["SSE"], ss_scores["SSD"], ss_scores["SSB"],
-                    ss_total, ss_percent]
+
+        # Define new headers for the last questionnaire.
+        last_headers = [
+            "q-open_goal_of_study",
+            "q-open_noticable_aspects",
+            "q-choice_noticed_saliency",
+            "q-choice_saliency_strength",
+            "q-choice_saliency_impact",
+            "q-open_saliency_impact",
+            "q-choice_saliency_value",
+            "q-choice_win_motivation",
+            "q-open_comments"
+        ]
+
+        headers = (["participant_id"] +
+                   [f"bis_{i+1}" for i in range(len(self.bis_items))] +
+                   [f"sss_{i+1}" for i in range(len(self.sss_items))] +
+                   ["bis_total", "SST", "SSE", "SSD", "SSB", "ss_total", "ss_percent"] +
+                   last_headers)
+
+        # Order last questionnaire responses by question number 1 to 9.
+        last_data_ordered = [self.last_question_data[q_num] for q_num in range(1, 10)]
+        data_row = ([self.participant_id] +
+                    bis_responses +
+                    sss_responses +
+                    [bis_total,
+                     ss_scores["SST"], ss_scores["SSE"], ss_scores["SSD"], ss_scores["SSB"],
+                     ss_total, ss_percent] +
+                    last_data_ordered)
+
         with open(filename, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerow(headers)
             writer.writerow(data_row)
 
+    def show_thank_you(self):
+        """
+        Display a final thank-you screen.
+        """
+        self.current_frame.destroy()
+        self.current_frame = ttk.Frame(self.root)
+        self.current_frame.pack(fill="both", expand=True, padx=150, pady=50)
+        thank_font = font.Font(family="Arial", size=self.base_font_size + 6, weight="bold")
+        thank_text = (
+            "Vielen Dank!\n\n"
+            "Du hast das Experiment erfolgreich abgeschlossen. "
+            f"Die Versuchsleiterin bzw. der Versuchsleiter wird sich nun an dich wenden und dir deine Vergütung sowie deinen erspielten Gewinn in Höhe von {self.bonus:.2f}€ auszahlen."
+        )
+        ttk.Label(self.current_frame, text=thank_text, font=thank_font, wraplength=800, justify="center").pack(pady=20)
 
 def run_questionnaire(participant_id=None, bonus=None):
     """
@@ -335,24 +445,20 @@ def run_questionnaire(participant_id=None, bonus=None):
     Args:
         participant_id (str, optional): The participant's ID. If not provided,
                                         the GUI will prompt for it.
+        bonus (float, optional): The bonus/earnings to be displayed on the thank-you page.
     """
     app = QuestionnaireApp(participant_id, bonus)
     app.root.mainloop()
-
 
 if __name__ == "__main__":
     # Expect 2 arguments: participant_id, bonus
     if len(sys.argv) < 3:
         print("Usage: questionnaire_survey.py <participant_id> <bonus>")
         sys.exit(1)
-
     participant_id = sys.argv[1]
     bonus_str = sys.argv[2]
-
-    # Convert bonus string to float if needed
     try:
         bonus = float(bonus_str.strip())
     except ValueError:
         bonus = 0.0
-
     run_questionnaire(participant_id, bonus)

@@ -35,8 +35,8 @@ SOUNDS_DIR = MEDIA_DIR / "sounds"
 
 CONFIG = {
     'TASK_PARAMS': {
-        'N_PRACTICE_TRIALS': 1,
-        'N_MAIN_TRIALS': 5,
+        'N_PRACTICE_TRIALS': 15,
+        'N_MAIN_TRIALS': 200,
         'ITI_MEAN': 1.0,
         'ITI_SD': 0.5,
         'MAX_RESPONSE_TIME': 5,
@@ -152,7 +152,7 @@ class TrialData:
         self.data = []
         data_dir = CONFIG['PATHS']['DATA_DIR']
         os.makedirs(data_dir, exist_ok=True)
-        self.file_path = os.path.join(data_dir, f"{self.participant_id}_data.csv")
+        self.file_path = os.path.join(data_dir, f"{self.participant_id}_task_data.csv")
         with open(self.file_path, 'w', newline='', encoding='utf-8') as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=[
                 'mode', 'trial', 'choice', 'reaction_time', 'reward',
