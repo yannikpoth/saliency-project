@@ -20,3 +20,9 @@ __pycache__/
 *.bmp
 *.tiff
 
+# Cursor
+.cursorrules
+.cursorignore
+
+# Old files
+.old/
