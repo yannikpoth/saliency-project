@@ -20,24 +20,40 @@ parameters {
   // group-level parameters
   real alpha_mu_raw;
   real beta_mu_raw;
-  real<lower=0> alpha_sd_raw;
-  real<lower=0> beta_sd_raw;
+  real<lower=0.001, upper=3> alpha_sd_raw; // Use bounds directly from prior
+  real<lower=0.001, upper=3> beta_sd_raw;  // Use bounds directly from prior
 
-  // subject-level raw parameters
-  vector[nSubjects] alpha_raw;
-  vector[nSubjects] beta_raw;
+  // Subject-level parameters (on the raw, unbounded scale)
+  vector[nSubjects] alpha_subj_raw;
+  vector[nSubjects] beta_subj_raw;
+}
+
+transformed parameters {
+  // Transform group means to the desired scale [0,1] for alpha, [0,3] for beta
+  real<lower=0, upper=1> alpha_mu = Phi_approx(alpha_mu_raw);
+  real<lower=0, upper=3> beta_mu  = Phi_approx(beta_mu_raw) * 3;
+
+  // Subject-level parameters (transformed to desired scale)
+  // These are now derived from the raw subject parameters
+  vector<lower=0, upper=1>[nSubjects] alpha_subj;
+  vector<lower=0, upper=3>[nSubjects] beta_subj;
+  for (s in 1:nSubjects) {
+    alpha_subj[s] = Phi_approx(alpha_subj_raw[s]);
+    beta_subj[s]  = Phi_approx(beta_subj_raw[s]) * 3;
+  }
 }
 
 model {
-  // Priors for group-level parameters
+  // Priors for group-level raw parameters (as specified)
   alpha_mu_raw ~ uniform(-3, 3);
   beta_mu_raw  ~ uniform(-3, 3);
-  alpha_sd_raw ~ uniform(0.001, 3);
-  beta_sd_raw  ~ uniform(0.001, 3);
 
-  // Priors for subject-level raw parameters (standard normal for non-centered parameterization)
-  alpha_raw ~ normal(0, 1);
-  beta_raw  ~ normal(0, 1);
+
+
+  // Centered Parameterization:
+  alpha_subj_raw ~ normal(alpha_mu_raw, alpha_sd_raw);
+  beta_subj_raw  ~ normal(beta_mu_raw, beta_sd_raw);
+
 
   // Likelihood calculation
   for (s in 1:nSubjects) {
@@ -46,47 +62,33 @@ model {
     int start_idx = trial_starts[s];
     int end_idx = start_idx + trial_lengths[s] - 1;
 
-    // Calculate subject-specific parameters (transformed)
-    // Beta can be calculated once per subject as it's constant within a subject
-    real beta_s = Phi_approx(beta_mu_raw + beta_sd_raw * beta_raw[s]) * 3;
-
-    // Pre-calculate untransformed alpha for the subject
-    real alpha_s_untransformed = alpha_mu_raw + alpha_sd_raw * alpha_raw[s];
+    // Use pre-calculated transformed subject parameters
+    real alpha_s = alpha_subj[s]; // Directly use the transformed subject alpha
+    real beta_s = beta_subj[s];   // Directly use the transformed subject beta
 
     for (i in start_idx:end_idx) {
       int current_choice = choice[i];
       real current_reward = reward[i];
 
-      // Calculate alpha for the current trial (allows for future trial-wise modulation)
-      real alpha_i = Phi_approx(alpha_s_untransformed); // Transform here
-
       // Log-likelihood contribution for the current trial i
-      // Use beta_s (subject-specific) and current state v
       target += categorical_logit_lpmf(current_choice | beta_s * v);
 
       // Update chosen value
       pe = current_reward - v[current_choice];
-      // Use alpha_i (potentially trial-specific) for the update
-      v[current_choice] = v[current_choice] + alpha_i * pe;
+      // Use subject-specific alpha_s for the update
+      v[current_choice] = v[current_choice] + alpha_s * pe;
     }
   }
 }
 
 generated quantities {
-  // Group means
-  real<lower=0,upper=1> alpha_mu = Phi_approx(alpha_mu_raw);
-  real<lower=0,upper=3> beta_mu  = Phi_approx(beta_mu_raw) * 3;
+  // Group means (already calculated in transformed parameters)
+  // real<lower=0,upper=1> alpha_mu = Phi_approx(alpha_mu_raw); // Recalculated here just for clarity if needed, but redundant
+  // real<lower=0,upper=3> beta_mu  = Phi_approx(beta_mu_raw) * 3; // Recalculated here just for clarity if needed, but redundant
 
-  // Subject-level parameters (transformed) - useful for checking individual estimates
-  vector<lower=0, upper=1>[nSubjects] alpha_subj;
-  vector<lower=0, upper=3>[nSubjects] beta_subj;
-  for (s in 1:nSubjects) {
-      // Note: alpha_subj here represents the base alpha for the subject,
-      // calculated before any potential trial-wise modulation.
-      alpha_subj[s] = Phi_approx(alpha_mu_raw + alpha_sd_raw * alpha_raw[s]);
-      beta_subj[s]  = Phi_approx(beta_mu_raw + beta_sd_raw * beta_raw[s]) * 3;
-  }
-
+  // Subject-level parameters (transformed) - already calculated in transformed parameters
+  // vector<lower=0, upper=1>[nSubjects] alpha_subj; // Already available
+  // vector<lower=0, upper=3>[nSubjects] beta_subj; // Already available
 
   // Predicted choices for posterior predictive checks
   int y_pred[nTotalTrials];
@@ -100,14 +102,11 @@ generated quantities {
       int start_idx = trial_starts[s];
       int end_idx = start_idx + trial_lengths[s] - 1;
 
-      // Calculate subject-specific parameters (transformed)
-      real beta_s = beta_subj[s]; // Use pre-calculated beta_subj
-      real alpha_s_untransformed = alpha_mu_raw + alpha_sd_raw * alpha_raw[s]; // Recalculate raw for consistency
+      // Use transformed subject-specific parameters from the transformed parameters block
+      real alpha_s = alpha_subj[s];
+      real beta_s = beta_subj[s];
 
       for (i in start_idx:end_idx) {
-        // Calculate alpha for the current trial
-        real alpha_i = Phi_approx(alpha_s_untransformed); // Transform here
-
         // Use observed choice and reward for updating V to predict next trial's choice
         int current_choice = choice[i];
         real current_reward = reward[i];
@@ -117,7 +116,7 @@ generated quantities {
 
         // Update Value based on observed choice and reward
         pe = current_reward - v[current_choice];
-        v[current_choice] = v[current_choice] + alpha_i * pe; // Use alpha_i
+        v[current_choice] = v[current_choice] + alpha_s * pe;
       }
     }
   }

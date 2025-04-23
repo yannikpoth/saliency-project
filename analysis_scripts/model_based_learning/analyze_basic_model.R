@@ -135,7 +135,7 @@ fit_basic <- stan(
   chains = 4,
   cores = getOption("mc.cores", 1),
   seed = 123,
-  control = list(adapt_delta = 0.98, max_treedepth = 12) # Increased adapt_delta further, added max_treedepth
+  control = list(adapt_delta = 0.95) # Reset adapt_delta, removed max_treedepth
 )
 
 message("Basic Stan model fitting complete.")
