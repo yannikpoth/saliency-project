@@ -30,10 +30,10 @@ parameters {
 
 model {
   // Priors for group-level parameters
-  alpha_mu_raw ~ normal(0, 1.5);
-  beta_mu_raw  ~ normal(0, 1.5);
-  alpha_sd_raw ~ normal(0, 1);
-  beta_sd_raw  ~ normal(0, 1);
+  alpha_mu_raw ~ uniform(-3, 3);
+  beta_mu_raw  ~ uniform(-3, 3);
+  alpha_sd_raw ~ uniform(0.001, 3);
+  beta_sd_raw  ~ uniform(0.001, 3);
 
   // Priors for subject-level raw parameters (standard normal for non-centered parameterization)
   alpha_raw ~ normal(0, 1);
