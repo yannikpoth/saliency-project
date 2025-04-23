@@ -1,0 +1,22 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.ipynb_checkpoints
+
+# R & Stan
+.Rhistory
+.RData
+*.rds
+.Rproj.user
+
+# Images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+

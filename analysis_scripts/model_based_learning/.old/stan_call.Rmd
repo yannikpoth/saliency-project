@@ -1,0 +1,97 @@
+# 1. Prerequisities
+```{r}
+library(rstan)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(shinystan)
+library(rstudioapi)
+
+# Set working directory to the location of this Rmd file
+setwd(dirname(getSourceEditorContext()$path))
+
+# Define the directory where collected data files are stored
+data_dir <- "../../bandit_task/collected_data"
+
+# List only task data files (exclude questionnaire files)
+file_paths <- list.files(path = data_dir, pattern = "^[0-9]+_task_data\\.csv$", full.names = TRUE)
+
+# Function to load and filter one CSV file
+load_data <- function(file_path) {
+  dat <- read.csv(file_path)
+  # Filter for main trials only and order by trial number
+  dat_main <- dat %>% 
+    filter(mode == "main") %>% 
+    arrange(trial)
+  return(dat_main)
+}
+
+# Load all task data
+all_data <- lapply(file_paths, load_data)
+```
+# 2. Creating Variables for Stan
+```{r}
+# Number of subjects and number of main trials per subject
+nSubjects <- length(all_data)
+nTrials <- min(sapply(all_data, nrow))  # use minimum number to avoid NA values
+
+# Initialize arrays for Stan (dimensions: nSubjects x nTrials)
+choice <- array(NA, dim = c(nSubjects, nTrials))
+reward <- array(NA, dim = c(nSubjects, nTrials))
+cue    <- array(NA, dim = c(nSubjects, nTrials))
+
+# Fill arrays with data for each subject, recoding missed trials:
+for (i in 1:nSubjects) {
+  dat <- all_data[[i]]
+  # Use only the first nTrials for consistency
+  valid_trials <- 1:nTrials
+  # If a trial is missed (condition == 2), recode choice as 0, otherwise recode (choice + 1)
+  choice[i, ] <- ifelse(dat$condition[valid_trials] == 2, 0, dat$choice[valid_trials] + 1)
+  # For reward, if the trial is missed, set reward to 0
+  reward[i, ] <- ifelse(dat$condition[valid_trials] == 2, 0, dat$reward[valid_trials])
+  # The cue variable remains as in the data (0 = non-salient, 1 = salient, 2 = missed)
+  cue[i, ]    <- dat$condition[valid_trials]
+}
+
+# Prepare the data list for Stan
+stan_data <- list(
+  nTrials = nTrials,
+  nSubjects = nSubjects,
+  choice = choice,
+  reward = reward,
+  cue = cue
+)
+```
+# 3. Model analysis
+```{r}
+# Specify the Stan model file (using the Phi transformation for alpha)
+model_file <- "ms_ql_1lr_shift_phi.stan"
+
+# Compile the Stan model
+my_model <- stan_model(model_file)
+
+# Sample from the posterior
+my_samples <- sampling(
+  my_model,
+  data = stan_data,
+  chains = 2,
+  iter = 4000,             # increased iterations for better convergence
+  control = list(max_treedepth = 15),
+  seed = 1234              # set seed for reproducibility
+)
+```
+# 4. Output and Diagnostics
+## 4.1 Posterior summary
+```{r}
+# Summary of the posterior for key parameters
+print(summary(my_samples, pars = c("alpha", "alpha_shift", "beta"), 
+              probs = c(0.025, 0.5, 0.975)))
+
+# Convert posterior samples to an array and then to a data frame (if further processing is needed)
+posterior_array <- as.array(my_samples)
+posterior_df <- as.data.frame(posterior_array)
+```
+## 4.2 ShinyStan Diagnostic
+```{r}
+launch_shinystan(my_samples)
+```
