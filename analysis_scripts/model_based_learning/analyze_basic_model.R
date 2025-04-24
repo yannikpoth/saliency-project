@@ -119,7 +119,7 @@ message("Stan data list prepared successfully.")
 message("Compiling and fitting the basic hierarchical Stan model...")
 
 # Define Stan model file path
-stan_model_file <- here::here("analysis_scripts", "model_based_learning", "basic_rl_model.stan")
+stan_model_file <- here::here("analysis_scripts", "model_based_learning", "basic_rl_model_NCP.stan")
 
 # Check if file exists
 if (!fs::file_exists(stan_model_file)) {
