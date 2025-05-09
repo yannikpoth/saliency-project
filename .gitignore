@@ -9,20 +9,35 @@ __pycache__/
 # R & Stan
 .Rhistory
 .RData
+*.RData
 *.rds
 .Rproj.user
+.Rproj
 
-# Images
+# Media
 *.png
 *.jpg
 *.jpeg
 *.gif
 *.bmp
 *.tiff
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.wav
+*.mp3
+*.m4a
+*.m4b
+*.m4p
+*.m4b
+*.m4p
 
 # Cursor
 .cursorrules
 .cursorignore
+.cursor/
 
 # Old files
 .old/
@@ -31,3 +46,8 @@ old_*
 # Temporary files and folders
 *_tmp.*
 *_tmp/
+tmp_*
+
+# Data
+*.csv
+*.tsv
