@@ -1,5 +1,5 @@
 #      Run models -- Version 2
-# Last edit:    2025/05/07 
+# Last edit:    2025/05/09 
 # Authors:      Poth, Yannik (YP)
 #               Geysen, Steven (SG)
 # Notes:        - Fits YP's and SG's basic RL models (rl_cp_basic_YP.stan, rl_cp_basic_SG.stan).
@@ -51,7 +51,7 @@ options(mc.cores = parallel::detectCores()) # Use all available CPU cores
 # Stan execution parameters
 nChains <- 4      # Number of Markov chains
 nIters <- 4000    # Total iterations per chain (incl. warmup)
-# nWarmup <- 1000 # Specify warmup separately if needed, otherwise defaults to nIters/2
+nWarmup <- 3000 # Warmup iterations (nIters - nWarmup = sampling iterations)
 
 # Prepare the data using the sourced function
 # Set saveStan = TRUE if you want StanList.RData to be saved in its processed dir
@@ -72,7 +72,7 @@ if(!is.null(StanList) && !is.null(StanList$nSubs)) {
 
 
 # Define the model(s) to run
-modelist <- c("rl_cp_shift_normal", "rl_cp_shift_uniform")
+modelist <- c("rl_cp_basic_normal", "rl_cp_basic_uniform", "rl_cp_shift_normal", "rl_cp_shift_uniform")
 # modelist <- c("rl_cp_basic_final", "rl_cp_shift")
 
 # Initialize dataframe to store model comparison results
@@ -124,15 +124,37 @@ for (modeli in modelist) {
     next # Skip to the next model in the list
   }
 
+  # --- Define init_fun for sensible starting values ---
+  # This function will be called for each chain
+  init_fun <- function() {
+    list(
+      # For raw means with uniform(-4,4) priors, start near 0 (center of Phi transformation)
+      alpha_mu_raw = runif(1, -0.5, 0.5),
+      beta_mu_raw = runif(1, -0.5, 0.5),
+      
+      # For alpha_shift_mu_raw with normal(0,1) prior, start near 0
+      alpha_shift_mu_raw = rnorm(1, 0, 0.2),
+      
+      # For raw SDs with uniform(0,5) priors, start with small-ish positive values
+      alpha_sd_raw = runif(1, 0.5, 1.5),
+      beta_sd_raw = runif(1, 0.5, 1.5),
+      alpha_shift_sd_raw = runif(1, 0.5, 1.5)
+      
+      # Stan will ignore parameters in this list if they are not in the specific model being run
+      # e.g., alpha_shift_mu_raw and alpha_shift_sd_raw will be ignored for rl_cp_basic_uniform
+    )
+  }
+
   # Fit the Stan model
   model_fit <- stan(
     file = modelfile_name,
     data = StanList,
     chains = nChains,
     iter = nIters,
-    # warmup = nWarmup, # Uncomment if nWarmup is defined
-    control = list(adapt_delta = 0.95), # Increased adapt_delta
-    seed = 123 # Add a seed for reproducibility
+    warmup = nWarmup, 
+    control = list(adapt_delta = 0.98, max_treedepth = 12), # Increased adapt_delta & max_treedepth
+    seed = 123, # Add a seed for reproducibility
+    init = init_fun # Use sensible starting values
   )
 
   # --- Extract Diagnostic Metrics ---
