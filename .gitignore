@@ -26,6 +26,7 @@ __pycache__/
 
 # Old files
 .old/
+old_*
 
 # Temporary files and folders
 *_tmp.*

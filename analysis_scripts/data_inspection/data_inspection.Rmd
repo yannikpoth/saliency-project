@@ -388,16 +388,20 @@ for (subj_id in unique_subjects) {
 ```{r accuracy_analysis_boxplot, fig.width=4, fig.height=5}
 # --- Calculate Accuracy Metrics ---
 
-# Filter out missed trials (where choice is NA)
+# Filter out missed trials (where choice is NA) and trials with fast RTs
 accuracy_data <- all_task_data %>% 
-  filter(!is.na(choice))
+  filter(!is.na(choice)) %>%
+  filter(reaction_time >= 0.150) # Added RT filter (keep >= 150ms)
 
-# Determine the better option index and if the participant chose it
-# If reward_prob_1 == reward_prob_2, we consider option 0 the 'better' one arbitrarily.
+# Determine if the participant chose the strictly better option, assigning 0.5 for ties.
 accuracy_data <- accuracy_data %>%
   mutate(
-    better_option_idx = ifelse(reward_prob_1 >= reward_prob_2, 0, 1),
-    chose_better_option = ifelse(choice == better_option_idx, 1, 0)
+    chose_better_option = case_when(
+      reward_prob_1 > reward_prob_2 ~ ifelse(choice == 0, 1, 0), # Chose A when A was better
+      reward_prob_2 > reward_prob_1 ~ ifelse(choice == 1, 1, 0), # Chose B when B was better
+      reward_prob_1 == reward_prob_2 ~ 0.5, # Tie situation, assign 0.5
+      TRUE ~ NA_real_ # Handle any unexpected cases (though should not occur with filtering)
+    )
   )
 
 # Calculate mean accuracy per participant
@@ -417,12 +421,12 @@ n_subjects_accuracy <- nrow(accuracy_summary)
 if (n_subjects_accuracy >= 2) {
   t_test_result <- t.test(accuracy_summary$mean_accuracy, mu = 0.5)
   # Format p-value for caption
-  p_value_formatted <- ifelse(t_test_result$p.value < 0.001, 
-                              "< .001", 
+  p_value_formatted <- ifelse(t_test_result$p.value < 0.001,
+                              "< .001",
                               paste0("= ", format.pval(t_test_result$p.value, digits = 2, nsmall = 2)))
   t_test_caption <- paste0("One-sample t-test vs 0.5: t(", 
-                           round(t_test_result$parameter, 1), ") = ", 
-                           round(t_test_result$statistic, 2), ", p ", 
+                           round(t_test_result$parameter, 1), ") = ",
+                           round(t_test_result$statistic, 2), ", p ",
                            p_value_formatted)
 } else {
   t_test_result <- NULL # Set to NULL if t-test cannot be performed
