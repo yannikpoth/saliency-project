@@ -1,0 +1,655 @@
+# 1. Prerequisities
+```{r}
+# Load necessary packages
+library(tidyverse)
+library(dplyr)
+library(here)
+library(fs)
+library(patchwork)
+```
+
+# 2. Load data
+```{r load_data}
+# Define data directory path using 'here' package
+data_dir <- here::here("bandit_task", "collected_data")
+
+# List task data files
+task_files <- fs::dir_ls(data_dir, regexp = "_task_data\\.csv$")
+
+# Function to read and preprocess a single task file
+read_task_data <- function(file_path) {
+  subject_id <- sub("_task_data\\.csv$", "", basename(file_path))
+  read_csv(file_path, col_types = cols(
+    mode = col_character(),
+    trial = col_integer(),
+    choice = col_double(),
+    reaction_time = col_double(),
+    reward = col_double(),
+    condition = col_integer(),
+    reward_prob_1 = col_double(), # Added reward prob 1
+    reward_prob_2 = col_double()  # Added reward prob 2
+  )) %>%
+    mutate(
+      subject_id = as.character(subject_id),
+      # Ensure choice is 0 or 1 before converting to integer, handle NAs
+      choice = if_else(is.na(choice) | !choice %in% c(0, 1), NA_integer_, as.integer(choice)),
+      # Ensure reward is 0 or 1 before converting to integer
+      reward = if_else(is.na(reward) | !reward %in% c(0, 1), NA_real_, as.double(reward)) # Keep as double for Stan input
+    ) %>%
+    filter(mode == "main") %>% # Keep only main trials
+    select(subject_id, mode, trial, choice, reaction_time, reward, condition, reward_prob_1, reward_prob_2)
+}
+
+# Read and combine all task data
+all_task_data <- map_dfr(task_files, read_task_data)
+```
+
+# 3. Reaction Time Analysis
+
+```{r rt_analysis, fig.width=7, fig.asp=9/16}
+# Filter out missed trials (where choice is NA) and trials with NA reaction time
+rt_data <- all_task_data %>% 
+  filter(!is.na(choice)) %>% 
+  filter(!is.na(reaction_time)) # Added filter for NA reaction times
+
+# Calculate summary statistics per participant
+rt_summary_per_subject <- rt_data %>% 
+  group_by(subject_id) %>% 
+  summarise(
+    min_rt = min(reaction_time, na.rm = TRUE),
+    max_rt = max(reaction_time, na.rm = TRUE),
+    mean_rt = mean(reaction_time, na.rm = TRUE),
+    median_rt = median(reaction_time, na.rm = TRUE),
+    n_trials = n(),
+    n_fast_rt = sum(reaction_time < 0.150, na.rm = TRUE), # Count RTs < 150ms
+    percent_fast_rt = (n_fast_rt / n_trials) * 100
+  ) %>% 
+  ungroup()
+
+# Print summary table
+print(rt_summary_per_subject)
+
+# Calculate overall fast RT percentage
+overall_fast_rt_summary <- rt_data %>% 
+  summarise(
+    total_trials = n(),
+    total_fast_rt = sum(reaction_time < 0.150, na.rm = TRUE), # Updated threshold
+    overall_percent_fast_rt = (total_fast_rt / total_trials) * 100
+  )
+
+print(paste("Overall percentage of trials with RT < 150ms:", # Updated text
+            round(overall_fast_rt_summary$overall_percent_fast_rt, 2), "%"))
+
+# Plot enhanced histogram of reaction times
+rt_histogram <- ggplot(rt_data, aes(x = reaction_time)) +
+  # Histogram with density y-axis, gray fill, black outlines
+  geom_histogram(aes(y = after_stat(density)), # Updated to after_stat(density)
+                 binwidth = 0.1,
+                 boundary = 0,
+                 fill = "grey80", # Lighter gray fill
+                 color = "black", # Black outlines for bars
+                 alpha = 0.7) +
+  # Vertical line for the threshold
+  geom_vline(xintercept = 0.150, # Updated threshold
+             linetype = "51",    
+             color = "darkred", 
+             size = 0.6) +      
+  # Add annotation for the threshold line
+  annotate("text",
+           x = 0.18, # Adjusted x position for new line
+           y = 2.2,  
+           label = "Fast RT threshold (150ms)", # Updated text
+           hjust = 0, 
+           vjust = 0, 
+           size = 3.5, 
+           color = "grey20") + 
+  # Remove padding on axes and set limits
+  scale_x_continuous(limits = c(0, max(rt_data$reaction_time, na.rm = TRUE) * 1.05),
+                     expand = c(0.01, 0.01)) + 
+  scale_y_continuous(expand = c(0.01, 0.01), limits = c(0, 2.4)) + 
+  labs(
+    title = "Overall Reaction Time Distribution",
+    subtitle = paste0("Main task trials (N=", nrow(rt_data), "). Dashed line: 150ms threshold."),
+    x = "Reaction Time (s)",
+    y = "Density", 
+    caption = NULL 
+  ) +
+  theme_bw(base_size = 14) + 
+  theme(aspect.ratio = 9/16, 
+        plot.title = element_text(face = "bold"), 
+        plot.subtitle = element_text(color = "grey30")) 
+
+# --- Add ggsave for reliable export ---
+# Ensure a directory for figures exists
+figs_dir <- here::here("analysis_scripts", "figures")
+if (!dir.exists(figs_dir)) {
+  dir.create(figs_dir, recursive = TRUE)
+}
+
+# Save the plot with specific dimensions and resolution
+ggsave(
+  filename = file.path(figs_dir, "rt_histogram_global.png"),
+  plot = rt_histogram,
+  width = 7, # inches
+  height = 7 * (9/16), # Calculate height from width and aspect ratio
+  units = "in",
+  dpi = 300 # Standard publication resolution
+)
+```
+
+# 4. Reaction Time Analysis by Subject
+
+```{r rt_subject_histograms, fig.width=12, fig.height=15}
+# Calculate summary stats again for annotation, including highlight flag
+rt_summary_annot <- rt_data %>% 
+  group_by(subject_id) %>% 
+  summarise(
+    n_trials = n(),
+    n_fast_rt = sum(reaction_time < 0.150, na.rm = TRUE), # Updated threshold
+    percent_fast_rt = (n_fast_rt / n_trials) * 100,
+    .groups = 'drop' 
+  ) %>% 
+  mutate(
+    label_text = paste0(round(percent_fast_rt, 1), "%"),
+    highlight_flag = percent_fast_rt > 5 # Keep highlight criterion at 5%
+  )
+
+# Join highlight flag back to the main data
+rt_data_highlighted <- rt_data %>% 
+  left_join(rt_summary_annot %>% select(subject_id, highlight_flag), by = "subject_id")
+
+# Calculate number of subjects for layout adjustments if needed
+n_subjects <- length(unique(rt_data_highlighted$subject_id))
+# Define number of columns for faceting
+ncol = 4 
+
+# Plot histogram of reaction times faceted by subject
+rt_histogram_subject <- ggplot(rt_data_highlighted, aes(x = reaction_time)) +
+  # Histogram with density y-axis, conditional fill, black outlines
+  geom_histogram(aes(y = after_stat(density), fill = highlight_flag), # Updated to after_stat(density)
+                 binwidth = 0.1,
+                 boundary = 0,
+                 color = "black", 
+                 alpha = 0.7) +
+  # Define fill colors (TRUE = red, FALSE = grey) and hide legend
+  scale_fill_manual(values = c("TRUE" = "firebrick", "FALSE" = "grey80"), 
+                    guide = "none") + 
+  # Vertical line for the threshold
+  geom_vline(xintercept = 0.150, # Updated threshold
+             linetype = "51",    
+             color = "darkred", 
+             size = 0.6) +      
+  # Add text annotation for fast trial percentage (bold, larger, black)
+  geom_text(data = rt_summary_annot,
+            aes(x = Inf, y = Inf, label = label_text),
+            hjust = 1.1, 
+            vjust = 1.5, 
+            size = 7,   # Increased font size
+            alpha = 0.6, 
+            fontface = "bold", # Bold text
+            color = "black") + # Fixed color for contrast
+  # Facet by subject ID, allowing y-axis to scale freely
+  facet_wrap(~ subject_id, scales = "free_y", ncol = ncol) + 
+  # Remove padding on axes and set limits for x-axis
+  scale_x_continuous(limits = c(0, max(rt_data_highlighted$reaction_time, na.rm = TRUE) * 1.05),
+                     expand = c(0.01, 0.01)) + 
+  # Y-axis will scale freely due to facet_wrap argument
+  scale_y_continuous(expand = expansion(mult = c(0.01, 0.15))) + 
+  labs(
+    title = "Individual Reaction Time Distributions",
+    subtitle = "Main task trials. Dashed line: 150ms threshold. Highlighted: >5% trials < 150ms.",
+    x = "Reaction Time (s)",
+    y = "Density", 
+    caption = NULL 
+  ) +
+  theme_bw(base_size = 10) + 
+  theme(
+    plot.title = element_text(face = "bold", size=rel(1.2)), 
+    plot.subtitle = element_text(color = "grey30"),
+    strip.background = element_blank(), 
+    strip.text = element_text(face = "bold") 
+  )
+
+# Save the faceted plot 
+# Calculate dynamic height based on number of subjects and columns
+nrow = ceiling(n_subjects / ncol)
+plot_height = max(7, 3 * nrow) 
+
+ggsave(
+  filename = file.path(figs_dir, "rt_histogram_subject_level.png"), 
+  plot = rt_histogram_subject,
+  width = 12, 
+  height = plot_height, 
+  units = "in",
+  dpi = 300
+)
+```
+
+# 5. Reward Probability and Salient Feedback Visualization
+
+```{r reward_prob_plots, fig.width=8, fig.height=6}
+# Ensure the figures directory exists
+figs_dir <- here::here("analysis_scripts", "figures", "reward_prob_plots")
+if (!dir.exists(figs_dir)) {
+  dir.create(figs_dir, recursive = TRUE)
+}
+
+# Get unique subject IDs
+unique_subjects <- unique(all_task_data$subject_id)
+
+# Loop through each subject to create and save plots
+for (subj_id in unique_subjects) {
+
+  # Filter data for the current subject
+  subject_data <- all_task_data %>% filter(subject_id == subj_id)
+
+  # Filter data for salient feedback points
+  salient_feedback_A <- subject_data %>% filter(condition == 1 & choice == 0 & !is.na(choice))
+  salient_feedback_B <- subject_data %>% filter(condition == 1 & choice == 1 & !is.na(choice))
+
+  # Plot for Option A (Choice 0)
+  plot_A <- ggplot(subject_data, aes(x = trial, y = reward_prob_1)) +
+    geom_line(color = "dodgerblue", size = 0.8) + # Line for probability
+    # Add vertical dashed lines for salient feedback
+    geom_vline(data = salient_feedback_A, aes(xintercept = trial), 
+               color = "grey40", linetype = "dashed", size = 0.5, alpha = 0.6) +
+    geom_point(data = salient_feedback_A, aes(x = trial, y = reward_prob_1), 
+               shape = 21, color = "black", fill = "#ffc400", size = 3, stroke = 0.5) + # Circle with black border
+    scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) + # Set y-axis limits and breaks
+    labs(
+      #title = paste("Subject:", subj_id, "- Option A (Stimulus 1)"),
+      y = "p(Reward | A)", # Further shortened axis label
+      x = NULL # Remove x-axis label for top plot
+    ) +
+    theme_bw(base_size = 10) +
+    theme(
+      plot.title = element_text(face = "bold"),
+      axis.text.x = element_blank(), # Remove x-axis text
+      axis.ticks.x = element_blank()  # Remove x-axis ticks
+    )
+
+  # Plot for Option B (Choice 1)
+  plot_B <- ggplot(subject_data, aes(x = trial, y = reward_prob_2)) +
+    geom_line(color = "firebrick", size = 0.8) + # Line for probability
+    # Add vertical dashed lines for salient feedback
+    geom_vline(data = salient_feedback_B, aes(xintercept = trial), 
+               color = "grey40", linetype = "dashed", size = 0.5, alpha = 0.6) +
+    geom_point(data = salient_feedback_B, aes(x = trial, y = reward_prob_2), 
+               shape = 21, color = "black", fill = "#ffc400", size = 3, stroke = 0.5) + # Circle with black border
+    scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) + # Set y-axis limits and breaks
+    labs(
+      #title = "Option B (Stimulus 2)", 
+      y = "p(Reward | B)", # Further shortened axis label
+      x = "Trial" # Renamed axis
+    ) +
+    theme_bw(base_size = 10) +
+    theme(plot.title = element_text(face = "bold"))
+
+  # Combine plots using patchwork
+  combined_plot <- plot_A / plot_B + 
+    plot_annotation(title = paste("Subject", subj_id, ": Reward Probabilities & Salient Feedback"),
+                    theme = theme(plot.title = element_text(face = "bold", hjust = 0.5)))
+
+  # Save the combined plot
+  ggsave(
+    filename = file.path(figs_dir, paste0("reward_probs_salient_feedback_subject_", subj_id, ".png")),
+    plot = combined_plot,
+    width = 8,
+    height = 6,
+    units = "in",
+    dpi = 300
+  )
+}
+```
+
+
+# 6. Combined Reward Probability and Salient Feedback Visualization
+
+```{r combined_reward_prob_plots, fig.width=8, fig.height=4}
+# Ensure the new figures directory exists
+combined_figs_dir <- here::here("analysis_scripts", "figures", "reward_prob_plots_combined")
+if (!dir.exists(combined_figs_dir)) {
+  dir.create(combined_figs_dir, recursive = TRUE)
+}
+
+# Get unique subject IDs (if not already loaded)
+# unique_subjects <- unique(all_task_data$subject_id)
+
+# Loop through each subject to create and save plots
+for (subj_id in unique_subjects) {
+
+  # Filter data for the current subject
+  subject_data <- all_task_data %>% filter(subject_id == subj_id)
+
+  # Filter data for salient feedback points (used for points)
+  salient_feedback_A <- subject_data %>% filter(condition == 1 & choice == 0 & !is.na(choice))
+  salient_feedback_B <- subject_data %>% filter(condition == 1 & choice == 1 & !is.na(choice))
+  
+  # Combine salient feedback trials for vlines
+  combined_salient_trials <- unique(c(salient_feedback_A$trial, salient_feedback_B$trial))
+  vline_data <- data.frame(trial = combined_salient_trials)
+
+  # Create the combined plot
+  combined_plot_single <- ggplot(subject_data, aes(x = trial)) +
+    # Line for Option A
+    geom_line(aes(y = reward_prob_1, color = "A"), size = 0.8) +
+    # Line for Option B
+    geom_line(aes(y = reward_prob_2, color = "B"), size = 0.8) +
+    
+    # Vertical dashed lines for any salient feedback trial
+    geom_vline(data = vline_data, aes(xintercept = trial), 
+               color = "grey40", linetype = "dashed", size = 0.5, alpha = 0.6) +
+    
+    # Salient feedback points for Option A choice
+    geom_point(data = salient_feedback_A, aes(y = reward_prob_1), 
+               shape = 21, color = "black", fill = "#ffc400", size = 3, stroke = 0.5) +
+    # Salient feedback points for Option B choice
+    geom_point(data = salient_feedback_B, aes(y = reward_prob_2), 
+               shape = 21, color = "black", fill = "#ffc400", size = 3, stroke = 0.5) +
+    
+    # Manual color scale for lines and legend title
+    scale_color_manual(values = c("A" = "dodgerblue", "B" = "firebrick"), 
+                       labels = c("A" = "p(Reward | A)", "B" = "p(Reward | B)")) +
+                        
+    # Set y-axis limits and breaks
+    scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+    
+    # Labels and Title
+    labs(
+      title = paste("Subject", subj_id, ": Combined Reward Probabilities & Salient Feedback"),
+      y = "p(Reward)",
+      x = "Trial"
+    ) +
+    
+    # Theme
+    theme_bw(base_size = 10) +
+    theme(
+      plot.title = element_text(face = "bold", hjust = 0.5),
+      legend.position = c(0.98, 0.98), # Position legend inside plot (top-right)
+      legend.justification = c("right", "top"), # Anchor point for legend position
+      legend.title = element_blank(), # Remove legend title
+      legend.background = element_rect(color = "black", fill = rgb(1, 1, 1, alpha = 0.8), linetype = "solid", linewidth=0.5) # Use rgb() for semi-transparent fill
+    )
+
+  # Save the combined plot
+  ggsave(
+    filename = file.path(combined_figs_dir, paste0("combined_reward_probs_subject_", subj_id, ".png")),
+    plot = combined_plot_single,
+    width = 8,
+    height = 4, # Adjusted height for single panel
+    units = "in",
+    dpi = 300
+  )
+}
+```
+
+# 7. Accuracy Analysis and Boxplot
+
+```{r accuracy_analysis_boxplot, fig.width=4, fig.height=5}
+# --- Calculate Accuracy Metrics ---
+
+# Filter out missed trials (where choice is NA) and trials with fast RTs
+accuracy_data <- all_task_data %>% 
+  filter(!is.na(choice)) %>%
+  filter(reaction_time >= 0.150) # Added RT filter (keep >= 150ms)
+
+# Determine if the participant chose the strictly better option, assigning 0.5 for ties.
+accuracy_data <- accuracy_data %>%
+  mutate(
+    chose_better_option = case_when(
+      reward_prob_1 > reward_prob_2 ~ ifelse(choice == 0, 1, 0), # Chose A when A was better
+      reward_prob_2 > reward_prob_1 ~ ifelse(choice == 1, 1, 0), # Chose B when B was better
+      reward_prob_1 == reward_prob_2 ~ 0.5, # Tie situation, assign 0.5
+      TRUE ~ NA_real_ # Handle any unexpected cases (though should not occur with filtering)
+    )
+  )
+
+# Calculate mean accuracy per participant
+accuracy_summary <- accuracy_data %>%
+  group_by(subject_id) %>%
+  summarise(
+    mean_accuracy = mean(chose_better_option, na.rm = TRUE),
+    n_valid_trials = n(), # Number of non-missed trials for this subject
+    .groups = 'drop'
+  )
+
+# Calculate number of subjects for subtitle and t-test check
+n_subjects_accuracy <- nrow(accuracy_summary) 
+
+# Perform one-sample t-test against chance level (0.5)
+# Check if there are enough data points for t-test (at least 2)
+if (n_subjects_accuracy >= 2) {
+  t_test_result <- t.test(accuracy_summary$mean_accuracy, mu = 0.5)
+  # Format p-value for caption
+  p_value_formatted <- ifelse(t_test_result$p.value < 0.001,
+                              "< .001",
+                              paste0("= ", format.pval(t_test_result$p.value, digits = 2, nsmall = 2)))
+  t_test_caption <- paste0("One-sample t-test vs 0.5: t(", 
+                           round(t_test_result$parameter, 1), ") = ",
+                           round(t_test_result$statistic, 2), ", p ",
+                           p_value_formatted)
+} else {
+  t_test_result <- NULL # Set to NULL if t-test cannot be performed
+  t_test_caption <- "Not enough data for t-test (N < 2)"
+  overall_mean_accuracy <- mean(accuracy_summary$mean_accuracy, na.rm = TRUE) # Still calculate mean if possible
+}
+
+# --- Visualize Accuracy Boxplot ---
+
+# Calculate position for significance annotation
+# Ensure overall_mean_accuracy is calculated
+if (!exists("overall_mean_accuracy")) {
+  overall_mean_accuracy <- mean(accuracy_summary$mean_accuracy, na.rm = TRUE)
+}
+
+significance_y_start <- 0.5
+significance_y_end <- overall_mean_accuracy
+significance_x <- 1.3 # Position to the right of the boxplot (x=1)
+annotation_y <- (significance_y_start + significance_y_end) / 2
+
+
+# Create the boxplot
+accuracy_boxplot <- ggplot(accuracy_summary, aes(x = factor(1), y = mean_accuracy)) +
+  # Horizontal line for chance level (0.5) - Draw first to be behind points
+  geom_hline(
+    yintercept = 0.5,
+    linetype = "dashed",
+    color = "grey50", # Muted color
+    size = 0.5 # Slightly thinner
+  ) +
+  # Jittered points for individual subjects - Draw before boxplot
+  geom_jitter(
+    width = 0.2,       # Slightly wider jitter
+    height = 0,         # No vertical jitter
+    size = 1.5,           # Smaller points
+    alpha = 0.5,        # Slightly more transparent
+    shape = 16          # Solid circles
+  ) +
+   # Boxplot layer - Draw on top of points
+  geom_boxplot(
+    width = 0.35,       # Slightly wider box
+    outlier.shape = NA, # Hide default outliers
+    fill = "grey80",    # Keep fill
+    alpha = 0.6,        # More transparency
+    color = "black",      # Black outline
+    lwd=0.75           # Line width
+  ) +
+  # Add a point for the mean accuracy
+  stat_summary(fun = mean, geom = "point", shape = 18, size = 3, color = "firebrick") +
+  # Add significance annotation (only if t-test was performed and significant)
+  {if (!is.null(t_test_result) && t_test_result$p.value < 0.05) # Add condition to only plot if significant
+    list(
+      # Vertical line of the bracket
+      geom_segment(aes(x = significance_x, xend = significance_x, y = significance_y_start, yend = significance_y_end),
+                   color = "black", size = 0.5),
+      # Top horizontal line of the bracket
+      geom_segment(aes(x = significance_x - 0.02, xend = significance_x, y = significance_y_end, yend = significance_y_end),
+                   color = "black", size = 0.5),
+      # Bottom horizontal line of the bracket
+      geom_segment(aes(x = significance_x - 0.02, xend = significance_x, y = significance_y_start, yend = significance_y_start),
+                   color = "black", size = 0.5),
+      # Middle horizontal tick pointing to text
+      geom_segment(aes(x = significance_x, xend = significance_x + 0.03, y = annotation_y, yend = annotation_y), 
+                   color = "black", size = 0.5),
+      # P-value text annotation
+      annotate("text", x = significance_x + 0.05, y = annotation_y, 
+               label = paste("p", p_value_formatted), 
+               hjust = 0, size = 3.5)
+    )
+  } +
+  # Labels and Title - More concise
+  labs(
+    title = "Accuracy Distribution",
+    y = "Accuracy", # Renamed y-axis label
+    x = NULL, # Remove x-axis label
+    caption = NULL # Remove caption
+  ) +
+  # Set y-axis limits and breaks
+  scale_y_continuous(limits = c(min(0.3, min(accuracy_summary$mean_accuracy)*0.9), 
+                                 max(0.75, max(accuracy_summary$mean_accuracy)*1.05)), # Adjusted limits slightly
+                     breaks = seq(0.3, 0.8, by = 0.1), # Define breaks
+                     expand = expansion(mult = c(0.05, 0.05))) +
+  # Adjust x-axis limits to make space for annotation
+  scale_x_discrete(expand = expansion(add = c(0.6, 0.6))) + # Increase padding on x-axis
+  # Theme - Using theme_classic as a base for cleaner look
+  theme_classic(base_size = 12) + # Classic theme, slightly smaller base size
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5, size=rel(1.1)), # Centered bold title
+    plot.subtitle = element_text(hjust = 0.5, color = "grey30", size=rel(0.9)), # Centered subtitle
+    plot.caption = element_blank(), # Ensure caption area is blank
+    axis.text.x = element_blank(), # Remove x-axis text
+    axis.ticks.x = element_blank(), # Remove x-axis ticks
+    axis.line = element_line(colour = "black"), # Ensure axis lines are black
+    axis.title.y = element_text(size = rel(1.0), margin = margin(r = 10)), # Adjust y-axis title size and margin
+    plot.margin = margin(10, 10, 5, 5) # Adjust plot margins (t, r, b, l)
+  )
+
+# Ensure the main figures directory exists
+figs_dir_main <- here::here("analysis_scripts", "figures") 
+if (!dir.exists(figs_dir_main)) {
+  dir.create(figs_dir_main, recursive = TRUE)
+}
+
+# Save the accuracy boxplot
+ggsave(
+  filename = file.path(figs_dir_main, "accuracy_boxplot.png"),
+  plot = accuracy_boxplot,
+  width = 4, # Adjusted width
+  height = 5, # Adjusted height
+  units = "in",
+  dpi = 300
+)
+
+# Display the plot (optional, good for interactive Rmd use)
+# print(accuracy_boxplot)
+
+```
+
+# 8. Learning Curve Analysis (Accuracy over Time)
+
+```{r learning_curve_plot, fig.width=7, fig.asp=9/16}
+# --- Calculate Accuracy per Trial Bin ---
+
+# Define number of bins and bin size
+n_bins <- 20
+bin_size <- max(accuracy_data$trial) / n_bins # Assuming 200 trials
+
+# Add trial bin information
+# Ensure trial starts from 1 for bin calculation
+accuracy_data_binned <- accuracy_data %>%
+  mutate(
+    trial_bin = ceiling(trial / bin_size) # Assign each trial to a bin (1 to 20)
+  )
+
+# Calculate accuracy per subject per bin
+accuracy_per_bin <- accuracy_data_binned %>%
+  group_by(subject_id, trial_bin) %>%
+  summarise(
+    mean_accuracy_bin = mean(chose_better_option, na.rm = TRUE),
+    n_trials_in_bin = n(), # Count trials per bin for potential weighting/filtering later
+    .groups = 'drop'
+  )
+
+# Calculate overall mean accuracy and SEM per bin across subjects
+learning_curve_summary <- accuracy_per_bin %>%
+  group_by(trial_bin) %>%
+  summarise(
+    mean_accuracy_across_subjects = mean(mean_accuracy_bin, na.rm = TRUE),
+    sd_accuracy = sd(mean_accuracy_bin, na.rm = TRUE),
+    n_subjects_in_bin = n(), # Number of subjects contributing to the bin average
+    sem_accuracy = sd_accuracy / sqrt(n_subjects_in_bin), # Standard Error of the Mean
+    ci_lower = mean_accuracy_across_subjects - qt(0.975, df = n_subjects_in_bin - 1) * sem_accuracy, # Optional: 95% CI lower bound
+    ci_upper = mean_accuracy_across_subjects + qt(0.975, df = n_subjects_in_bin - 1) * sem_accuracy  # Optional: 95% CI upper bound
+  ) %>%
+  ungroup()
+
+# --- Visualize Learning Curve ---
+
+learning_curve_plot <- ggplot(learning_curve_summary, aes(x = trial_bin, y = mean_accuracy_across_subjects)) +
+  # Add ribbon for SEM
+  geom_ribbon(aes(ymin = mean_accuracy_across_subjects - sem_accuracy, 
+                  ymax = mean_accuracy_across_subjects + sem_accuracy),
+              fill = "dodgerblue", 
+              alpha = 0.2) + # Transparent fill for the ribbon
+  # Add line for the mean accuracy trend
+  geom_line(color = "dodgerblue", size = 1) +
+  # Add points for the mean of each bin
+  geom_point(color = "dodgerblue", size = 2.5, shape=16) +
+  # Horizontal line for chance level (0.5)
+  geom_hline(yintercept = 0.5, 
+             linetype = "dashed", 
+             color = "grey30", # Darker grey for better visibility
+             size = 0.6) +
+  # Add annotation for chance level
+  annotate("text", 
+           x = n_bins * 0.95, # Position towards the right
+           y = 0.52,          # Slightly above the line
+           label = "Chance Level (0.5)", 
+           hjust = 1,         # Right-align text
+           vjust = 0, 
+           size = 3.5, 
+           color = "grey30") +
+  # Labels and Title
+  labs(
+    title = "Learning Curve: Accuracy Over Trial Bins",
+    subtitle = paste0("Mean accuracy across participants (N=", n_subjects_accuracy, ") in ", n_bins, " bins of ", bin_size, " trials each."),
+    x = "Trial Bin",
+    y = "Mean Accuracy",
+    caption = "Shaded area represents Standard Error of the Mean (SEM)."
+  ) +
+  # Set y-axis limits and breaks for clarity
+  scale_y_continuous(limits = c(min(0.3, min(learning_curve_summary$ci_lower, na.rm = TRUE) * 0.95), 
+                                 max(0.8, max(learning_curve_summary$ci_upper, na.rm = TRUE) * 1.05)), 
+                     breaks = seq(0.3, 0.8, by = 0.1)) +
+  # Set x-axis breaks to show bin numbers clearly
+  scale_x_continuous(breaks = seq(1, n_bins, by = max(1, floor(n_bins / 10)))) + # Adjust breaks based on n_bins
+  # Theme - Clean and professional
+  theme_bw(base_size = 14) + 
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5), # Centered bold title
+    plot.subtitle = element_text(hjust = 0.5, color = "grey30", size = rel(0.9)), # Centered subtitle
+    plot.caption = element_text(hjust = 0, color = "grey50", size = rel(0.8)), # Left-aligned caption
+    axis.title = element_text(size = rel(1.0)),
+    legend.position = "none" # No legend needed for this plot
+  )
+
+# Ensure the main figures directory exists
+# figs_dir_main <- here::here("analysis_scripts", "figures") 
+# if (!dir.exists(figs_dir_main)) {
+#   dir.create(figs_dir_main, recursive = TRUE)
+# }
+
+# Save the learning curve plot
+ggsave(
+  filename = file.path(figs_dir_main, "learning_curve_accuracy.png"),
+  plot = learning_curve_plot,
+  width = 7, 
+  height = 7 * (9/16), # Maintain aspect ratio
+  units = "in",
+  dpi = 300
+)
+
+# Display the plot
+# print(learning_curve_plot)
+
+```
