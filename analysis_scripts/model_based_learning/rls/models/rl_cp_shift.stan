@@ -1,5 +1,5 @@
 /*      Reinforcement learning model: Alpha Shift - FINAL COMBINED VERSION
-Last edit:  2025/05/08
+Last edit:  2025/05/09
 Authors:    Poth, Yannik (YP)
             Geysen, Steven (SG)
 Notes:      - Based on rl_cp_basic_final.stan
@@ -7,6 +7,8 @@ Notes:      - Based on rl_cp_basic_final.stan
             - Alpha (base + shift) is transformed via Phi within the trial loop.
             - Uses normal priors for group-level raw parameters.
             - Hierarchical structure with Centered Parameterization (CP).
+            - Interpretable alpha shift values (actual change on 0-1 learning rate scale)
+              are now calculated in the generated quantities block.
 To do:      - Test and validate.
 Comments:   - Model to test hypothesis about salient feedback modulating learning rate.
 Sources:    Internal project files, Stan documentation
@@ -109,19 +111,38 @@ model {
 generated quantities {
   // --- Transformed Group-level Parameters (for interpretation) ---
   real<lower=0, upper=1> alpha_mu = Phi(alpha_mu_raw);       // Transformed base learning rate mean
-  real alpha_shift_mu = alpha_shift_mu_raw;                 // Raw alpha shift mean (as it's an additive term on raw scale)
+  real alpha_shift_mu_raw_gq = alpha_shift_mu_raw;           // Raw alpha shift mean (group level)
   real<lower=0, upper=10> beta_mu  = Phi(beta_mu_raw) * 10.0; // Scaled beta mean
 
   // --- Transformed/Raw Subject-level Parameters (for interpretation) ---
-  vector<lower=0, upper=1>[nSubs] alpha;          // Transformed base learning rate per subject
-  vector[nSubs] alpha_shift_subj;                 // Raw alpha shift per subject
+  vector<lower=0, upper=1>[nSubs] alpha;          // Transformed base learning rate per subject (non-salient feedback)
+  vector[nSubs] alpha_shift_subj_raw_gq;          // Raw alpha shift per subject
   vector<lower=0, upper=10>[nSubs] beta;          // Scaled beta per subject
+
+  // --- New: Interpretable Alpha Shift Parameters ---
+  // Subject-level
+  vector<lower=0, upper=1>[nSubs] alpha_learning_rate_salient_subj; // Subject's learning rate (0-1 scale) with salient feedback
+  vector[nSubs] interpretable_alpha_shift_subj;       // Subject's interpretable shift (difference on 0-1 scale due to salience)
+
+  // Group-level (derived from mean raw parameters)
+  real<lower=0, upper=1> alpha_learning_rate_salient_mu;    // Group mean learning rate (0-1 scale) with salient feedback
+  real interpretable_alpha_shift_mu;              // Group mean interpretable shift (difference on 0-1 scale due to salience)
 
   for (subi in 1:nSubs) {
     alpha[subi] = Phi(alpha_subj_raw[subi]);
-    alpha_shift_subj[subi] = alpha_shift_subj_raw[subi];
+    alpha_shift_subj_raw_gq[subi] = alpha_shift_subj_raw[subi]; // Storing the raw shift for clarity
     beta[subi]  = beta_subj_transformed[subi]; 
+
+    // Calculate interpretable shift components for each subject
+    alpha_learning_rate_salient_subj[subi] = Phi(alpha_subj_raw[subi] + alpha_shift_subj_raw_gq[subi]);
+    interpretable_alpha_shift_subj[subi] = alpha_learning_rate_salient_subj[subi] - alpha[subi];
   }
+
+  // Calculate interpretable shift components at the group level using mean raw parameters
+  // alpha_mu is already Phi(alpha_mu_raw)
+  // alpha_shift_mu_raw_gq is alpha_shift_mu_raw
+  alpha_learning_rate_salient_mu = Phi(alpha_mu_raw + alpha_shift_mu_raw_gq);
+  interpretable_alpha_shift_mu = alpha_learning_rate_salient_mu - alpha_mu;
 
   // --- Log-Likelihood Calculation (for LOOIC, WAIC) ---
   real log_lik[nSubs]; 
@@ -149,7 +170,7 @@ generated quantities {
         // Calculate effective raw alpha for GQ (same logic as model block)
         real gq_effective_raw_alpha;
         if (gq_salient_feedback == 1) {
-          gq_effective_raw_alpha = alpha_subj_raw[subi] + alpha_shift_subj_raw[subi];
+          gq_effective_raw_alpha = alpha_subj_raw[subi] + alpha_shift_subj_raw_gq[subi];
         } else {
           gq_effective_raw_alpha = alpha_subj_raw[subi];
         }
