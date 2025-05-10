@@ -50,8 +50,8 @@ options(mc.cores = parallel::detectCores()) # Use all available CPU cores
 
 # Stan execution parameters
 nChains <- 4      # Number of Markov chains
-nIters <- 4000    # Total iterations per chain (incl. warmup)
-nWarmup <- 3000 # Warmup iterations (nIters - nWarmup = sampling iterations)
+nIters <- 8000    # Total iterations per chain (incl. warmup)
+nWarmup <- 4000 # Warmup iterations (nIters - nWarmup = sampling iterations)
 
 # Prepare the data using the sourced function
 # Set saveStan = TRUE if you want StanList.RData to be saved in its processed dir
@@ -86,6 +86,7 @@ model_df <- data.frame(
   looic_se = numeric(),
   max_rhat = numeric(),      # Maximum R-hat value
   min_n_eff = numeric(),     # Minimum Effective Sample Size (n_eff)
+  num_divergent = integer(), # Number of divergent transitions
   elpd_diff = numeric(),     # Placeholder, will be filled after comparing all models
   se_diff = numeric(),       # Placeholder
   stringsAsFactors = FALSE   # Prevent factors by default
@@ -174,6 +175,11 @@ for (modeli in modelist) {
   if (is.infinite(max_rhat_val)) max_rhat_val <- NA_real_
   if (is.infinite(min_n_eff_val)) min_n_eff_val <- NA_real_
   
+  # --- Extract Divergent Transitions ---
+  sampler_params <- get_sampler_params(model_fit, inc_warmup = FALSE)
+  num_divergent_val <- sum(sapply(sampler_params, function(x) sum(x[, "divergent__"])))
+  if (length(num_divergent_val) == 0) num_divergent_val <- NA_integer_ # Handle cases where it might not be extractable
+  
   # --- Store and Save Fit Object ---
   # Store fit object in the list
   model_fits_list[[modeli]] <- model_fit
@@ -220,6 +226,7 @@ for (modeli in modelist) {
         looic_se = model_loo_estimates["looic", "SE"],
         max_rhat = max_rhat_val,
         min_n_eff = min_n_eff_val,
+        num_divergent = num_divergent_val,
         elpd_diff = NA, # Placeholder, will be filled after comparing all models
         se_diff = NA    # Placeholder
       )
@@ -236,6 +243,7 @@ for (modeli in modelist) {
             looic = NA, looic_se = NA,
             max_rhat = max_rhat_val,
             min_n_eff = min_n_eff_val,
+            num_divergent = num_divergent_val,
             elpd_diff = NA, se_diff = NA
          )
        )
