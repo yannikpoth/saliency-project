@@ -3,8 +3,8 @@ Last edit:  2025/05/09
 Authors:    Poth, Yannik (YP)
             Geysen, Steven (SG)
 Notes:      - Based on rl_cp_basic_final.stan.
-            - Implements prior changes based on professor Jan Peter's feedback (2025/05/09):
-                - Group-level SDs (alpha_sd_raw, beta_sd_raw): uniform(0, 5)
+            - Implements prior changes based on professor Jan Peter's feedback (2025/04/23 & 2025/05/09):
+                - Group-level SDs (alpha_sd_raw, beta_sd_raw): uniform(0.001, 3)
                 - Group-level alpha_mu_raw: uniform(-4, 4)
                 - Group-level beta_mu_raw: uniform(-4, 4)
             - Transforms alpha and beta via Phi to [0,1] then scales beta.
@@ -56,8 +56,8 @@ model {
   beta_mu_raw  ~ uniform(-4, 4);   // Uniform prior
   
   // Group-level Standard Deviations (on the raw, unbounded scale, constrained positive)
-  alpha_sd_raw ~ uniform(0, 5); // Uniform prior
-  beta_sd_raw  ~ uniform(0, 5); // Uniform prior
+  alpha_sd_raw ~ uniform(0.001, 3); // Uniform prior (per prof. feedback)
+  beta_sd_raw  ~ uniform(0.001, 3); // Uniform prior (per prof. feedback)
 
   // Subject-level Raw Parameters (Centered Parameterization)
   alpha_subj_raw ~ normal(alpha_mu_raw, alpha_sd_raw);
