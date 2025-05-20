@@ -72,8 +72,7 @@ if(!is.null(StanList) && !is.null(StanList$nSubs)) {
 
 
 # Define the model(s) to run
-modelist <- c("rl_cp_basic_normal", "rl_cp_basic_uniform", "rl_cp_shift_normal", "rl_cp_shift_uniform")
-# modelist <- c("rl_cp_basic_final", "rl_cp_shift")
+modelist <- c("rl_cp_shift_uniform")
 
 # Initialize dataframe to store model comparison results
 model_df <- data.frame(
