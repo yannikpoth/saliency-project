@@ -545,6 +545,142 @@ ggsave(
 
 ```
 
+# 7.1 Individual Participant Accuracy
+
+```{r individual_accuracy_analysis, fig.width=7, fig.height=max(4, 0.3 * n_subjects_accuracy)}
+# --- Display Sorted Accuracy Table ---
+# Sort accuracy_summary by mean_accuracy for easy inspection
+sorted_accuracy_summary <- accuracy_summary %>%
+  arrange(mean_accuracy) %>%
+  mutate(below_chance = mean_accuracy < 0.5)
+
+print("Individual Participant Accuracies (sorted):")
+print(knitr::kable(sorted_accuracy_summary, digits = 3, caption = "Individual participant mean accuracies, sorted. 'below_chance' is TRUE if accuracy < 0.5."))
+
+# --- Visualize Individual Accuracies with a Dot Plot ---
+
+# Ensure n_subjects_accuracy is available (calculated in the previous chunk)
+if (!exists("n_subjects_accuracy")) {
+  n_subjects_accuracy <- nrow(accuracy_summary)
+}
+
+# Create the dot plot
+individual_accuracy_plot <- ggplot(sorted_accuracy_summary, 
+                                   aes(x = mean_accuracy, 
+                                       y = reorder(subject_id, mean_accuracy), 
+                                       color = below_chance)) +
+  geom_point(size = 2.5, alpha = 0.8) +
+  geom_vline(xintercept = 0.5, linetype = "dashed", color = "red", size = 0.7) +
+  # Add text labels for accuracy values
+  geom_text(aes(label = sprintf("%.3f", mean_accuracy),
+                hjust = ifelse(mean_accuracy < 0.5, 1.3, -0.3)), # Adjusted hjust for more space
+            vjust = 0.5,
+            size = 2.5,
+            check_overlap = TRUE) + # Avoid overlapping text if points are too close
+  scale_color_manual(values = c("TRUE" = "firebrick", "FALSE" = "black"),
+                     name = "Below Chance (0.5)",
+                     labels = c("FALSE" = "No", "TRUE" = "Yes")) +
+  scale_x_continuous(limits = c(min(0, min(sorted_accuracy_summary$mean_accuracy, na.rm = TRUE) - 0.05), 
+                                 max(1, max(sorted_accuracy_summary$mean_accuracy, na.rm = TRUE) + 0.05)),
+                     breaks = seq(0, 1, by = 0.1)) +
+  labs(
+    title = "Individual Participant Accuracy",
+    subtitle = paste0("Each point represents a participant (N=", n_subjects_accuracy, "). Red line at chance level (0.5)."),
+    x = "Mean Accuracy",
+    y = "Participant ID (Sorted by Accuracy)"
+  ) +
+  theme_bw(base_size = 11) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5, color = "grey30"),
+    legend.position = "top",
+    axis.text.y = element_text(size = rel(0.8)) # Adjust y-axis text if many subjects
+  )
+
+# Save the individual accuracy plot
+ggsave(
+  filename = file.path(figs_dir_main, "individual_accuracy_dotplot.png"),
+  plot = individual_accuracy_plot,
+  width = 7,
+  height = max(4, 0.25 * n_subjects_accuracy), # Dynamic height based on number of subjects
+  units = "in",
+  dpi = 300,
+  limitsize = FALSE # Allow plot to exceed default size limits if many subjects
+)
+
+# Display the plot
+print(individual_accuracy_plot)
+
+```
+
+# 7.2 Individual Participant Accuracy (Sorted by Participant ID)
+
+```{r individual_accuracy_by_id_plot, fig.width=7, fig.height=max(4, 0.3 * n_subjects_accuracy)}
+# --- Prepare data for this plot ---
+# Ensure subject_id is character for proper sorting and `below_chance` is present.
+# Data will be sorted for plotting by participant ID.
+plot_data_by_id <- accuracy_summary %>%
+  mutate(below_chance = mean_accuracy < 0.5)
+
+# --- Visualize Individual Accuracies, Sorted by Participant ID ---
+
+# Ensure n_subjects_accuracy is available (calculated in a previous chunk)
+if (!exists("n_subjects_accuracy")) {
+  n_subjects_accuracy <- nrow(accuracy_summary) # Should be nrow(plot_data_by_id)
+}
+
+# Create the dot plot, sorted by participant ID
+# Participant '01' (or lowest ID) will be at the top, descending.
+individual_accuracy_by_id_plot <- ggplot(plot_data_by_id,
+                                   aes(x = mean_accuracy,
+                                       y = factor(subject_id, levels = rev(sort(unique(plot_data_by_id$subject_id)))),
+                                       color = below_chance)) +
+  geom_point(size = 2.5, alpha = 0.8) +
+  geom_vline(xintercept = 0.5, linetype = "dashed", color = "red", size = 0.7) +
+  geom_text(aes(label = sprintf("%.3f", mean_accuracy),
+                hjust = ifelse(mean_accuracy < 0.5, 1.3, -0.3)), # Adjusted hjust
+            vjust = 0.5,
+            size = 2.5,
+            check_overlap = TRUE) +
+  scale_color_manual(values = c("TRUE" = "firebrick", "FALSE" = "black"),
+                     name = "Below Chance (0.5)",
+                     labels = c("FALSE" = "No", "TRUE" = "Yes")) +
+  scale_x_continuous(limits = c(min(0, min(plot_data_by_id$mean_accuracy, na.rm = TRUE) - 0.05),
+                                 max(1, max(plot_data_by_id$mean_accuracy, na.rm = TRUE) + 0.05)),
+                     breaks = seq(0, 1, by = 0.1)) +
+  labs(
+    title = "Individual Participant Accuracy (Sorted by ID)",
+    subtitle = paste0("Each point represents a participant (N=", n_subjects_accuracy, "). Red line at chance level (0.5)."),
+    x = "Mean Accuracy",
+    y = "Participant ID"
+  ) +
+  theme_bw(base_size = 11) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5, color = "grey30"),
+    legend.position = "top",
+    axis.text.y = element_text(size = rel(0.8))
+  )
+
+# Ensure the main figures directory exists (defined in previous chunks)
+# figs_dir_main <- here::here("analysis_scripts", "figures") 
+
+# Save the new plot with a different filename
+ggsave(
+  filename = file.path(figs_dir_main, "individual_accuracy_by_id_dotplot.png"),
+  plot = individual_accuracy_by_id_plot,
+  width = 7,
+  height = max(4, 0.25 * n_subjects_accuracy), # Dynamic height
+  units = "in",
+  dpi = 300,
+  limitsize = FALSE
+)
+
+# Display the plot
+print(individual_accuracy_by_id_plot)
+
+```
+
 # 8. Learning Curve Analysis (Accuracy over Time)
 
 ```{r learning_curve_plot, fig.width=7, fig.asp=9/16}
