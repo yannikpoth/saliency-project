@@ -42,12 +42,13 @@ source("rls/data/StanList.R")
 results_basedir <- "results" # Base directory for results
 fit_dir <- file.path(results_basedir, "fitobjects")
 comp_dir <- file.path(results_basedir, "model_comparison")
+plots_dir <- file.path(results_basedir, "plots") # Ensure plots_dir is defined
 
 # Create directories if they don't exist
 dir.create(results_basedir, showWarnings = FALSE)
 dir.create(fit_dir, showWarnings = FALSE, recursive = TRUE)
 dir.create(comp_dir, showWarnings = FALSE, recursive = TRUE)
-
+dir.create(plots_dir, showWarnings = FALSE, recursive = TRUE)
 
 ## Stan settings
 rstan_options(auto_write = TRUE)            # Avoid recompiling unchanged models
@@ -61,8 +62,8 @@ options(mc.cores = parallel::detectCores()) # Use all available CPU cores
 
 # Stan execution parameters
 nChains <- 4      # Number of Markov chains
-nIters <- 8000    # Total iterations per chain (incl. warmup)
-nWarmup <- 4000 # Warmup iterations (nIters - nWarmup = sampling iterations)
+nIters <- 4000    # Total iterations per chain (incl. warmup)
+nWarmup <- 2000 # Warmup iterations (nIters - nWarmup = sampling iterations)
 
 # Prepare the data using the sourced function
 # Set saveStan = TRUE if you want StanList.RData to be saved in its processed dir
@@ -81,106 +82,9 @@ if(!is.null(StanList) && !is.null(StanList$nSubs)) {
     print("StanList$nSubs or StanList$nSubs is NULL or StanList itself is NULL.")
 }
 
-# --- DIAGNOSTIC SECTION FOR PARTICIPANT 16 ---
-# Check if participant 16 exists in the data
-participant_to_check <- 16
-if (!is.null(StanList) && !is.null(StanList$nSubs) && participant_to_check <= StanList$nSubs) {
-  
-  print(paste("--- Running Diagnostics for Participant:", participant_to_check, "---"))
-  
-  # Extract data for the participant
-  # Assuming choice is 1 or 2, reward is 0 or 1. Adjust if your coding is different.
-  # StanList$choice uses 1 and 2 for choices.
-  # StanList$reward uses 0 and 1 for rewards.
-  # We need to get the actual number of trials for this subject from StanList$subTrials
-  
-  if (!is.null(StanList$subTrials) && length(StanList$subTrials) >= participant_to_check) {
-    num_trials_p16 <- StanList$subTrials[participant_to_check]
-    
-    # Ensure we only try to access valid trials
-    if (num_trials_p16 > 0 && num_trials_p16 <= ncol(StanList$choice)) {
-      p16_choices <- StanList$choice[participant_to_check, 1:num_trials_p16]
-      p16_rewards <- StanList$reward[participant_to_check, 1:num_trials_p16]
-      
-      # Filter out missed trials (coded as -9 or other non-valid values)
-      valid_trials_mask_p16 <- p16_choices %in% c(1, 2) & p16_rewards %in% c(0, 1)
-      p16_choices_valid <- p16_choices[valid_trials_mask_p16]
-      p16_rewards_valid <- p16_rewards[valid_trials_mask_p16]
-      
-      if (length(p16_choices_valid) > 0) {
-        # Calculate overall proportion of choosing stimulus 1 vs 2
-        prop_choice_1 <- sum(p16_choices_valid == 1) / length(p16_choices_valid)
-        print(paste("Participant", participant_to_check, "- Proportion of choosing Stimulus 1 (among valid trials):", round(prop_choice_1, 2)))
-        print(paste("Participant", participant_to_check, "- Proportion of choosing Stimulus 2 (among valid trials):", round(1 - prop_choice_1, 2)))
-        
-        # Overall reward rate
-        overall_reward_rate_p16 <- sum(p16_rewards_valid == 1) / length(p16_rewards_valid)
-        print(paste("Participant", participant_to_check, "- Overall reward rate (among valid trials):", round(overall_reward_rate_p16, 2)))
-        
-        # Simple plot of choices and rewards over trials
-        p16_df <- data.frame(
-          trial = 1:length(p16_choices_valid),
-          choice = factor(p16_choices_valid),
-          reward = factor(p16_rewards_valid)
-        )
-        
-        p16_plot <- ggplot(p16_df, aes(x = trial)) +
-          geom_point(aes(y = choice, color = "Choice"), size = 2) +
-          geom_point(aes(y = as.numeric(choice) + ifelse(reward == "1", 0.2, -0.2), shape = reward), size = 3) + # Offset rewards for visibility
-          scale_shape_manual(values = c("0" = 4, "1" = 16), name = "Reward") + # X for no reward, Circle for reward
-          labs(title = paste("Participant", participant_to_check, "- Choices and Rewards Over Valid Trials"),
-               x = "Trial Number (Valid)", y = "Choice (1 or 2)") +
-          theme_minimal()
-        
-        print(p16_plot)
-        ggsave(filename = file.path(plots_dir, paste0("participant_", participant_to_check, "_choice_reward_plot.png")), plot = p16_plot, width = 10, height = 6, bg = "white")
-        print(paste("Plot for participant", participant_to_check, "saved to", plots_dir, "directory."))
-        
-        # Win-stay analysis
-        # A "win" is a trial where a reward was received (reward == 1)
-        # "Stay" means choosing the same stimulus on the next trial
-        wins_p16 <- which(p16_rewards_valid == 1)
-        win_stay_count_p16 <- 0
-        opportunities_to_win_stay_p16 <- 0
-        
-        for (i in 1:(length(p16_choices_valid) - 1)) {
-          if (p16_rewards_valid[i] == 1) { # If it was a win
-            opportunities_to_win_stay_p16 <- opportunities_to_win_stay_p16 + 1
-            if (p16_choices_valid[i+1] == p16_choices_valid[i]) { # And next choice was the same
-              win_stay_count_p16 <- win_stay_count_p16 + 1
-            }
-          }
-        }
-        
-        if (opportunities_to_win_stay_p16 > 0) {
-          win_stay_prob_p16 <- win_stay_count_p16 / opportunities_to_win_stay_p16
-          print(paste("Participant", participant_to_check, "- Win-Stay Probability:", round(win_stay_prob_p16, 2)))
-        } else {
-          print(paste("Participant", participant_to_check, "- No opportunities to win-stay (no wins or no subsequent trials after wins)."))
-        }
-        
-      } else {
-        print(paste("Participant", participant_to_check, "- No valid (non-missing) trials found after filtering."))
-      }
-    } else {
-      print(paste("Participant", participant_to_check, "- Number of trials (", num_trials_p16, ") is invalid or exceeds data dimensions."))
-    }
-  } else {
-    print(paste("Participant", participant_to_check, "- subTrials data not found or participant index out of bounds."))
-  }
-} else {
-  if(is.null(StanList) || is.null(StanList$nSubs)) {
-    print("StanList or StanList$nSubs is NULL. Cannot perform participant diagnostic.")
-  } else {
-    print(paste("Participant", participant_to_check, "does not exist in the dataset (max subjects:", StanList$nSubs, "). Skipping diagnostic."))
-  }
-}
-print("--- End of Participant Diagnostic Section ---")
-# --- END DIAGNOSTIC SECTION ---
-
 
 # Define the model(s) to run
-modelist <- c("rl_cp_shift_uniform")
+modelist <- c("rl_cp_shift_uniform", "rl_cp_shift_preserv_uniform")
 
 # Initialize dataframe to store model comparison results
 model_df <- data.frame(
@@ -395,9 +299,6 @@ print("Starting Posterior Predictive Checks - Learning Curves (Proportion Correc
 T_trials <- 200 # Number of main trials
 block_size <- 10
 num_blocks <- T_trials / block_size
-
-plots_dir <- file.path(results_basedir, "plots") # Ensure plots_dir is defined
-dir.create(plots_dir, showWarnings = FALSE, recursive = TRUE)
 
 # Load true reward probabilities
 # Path assumes working directory is 'analysis_scripts/model_based_learning/' as per user file structure

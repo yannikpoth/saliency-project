@@ -6,6 +6,8 @@ library(dplyr)
 library(here)
 library(fs)
 library(patchwork)
+library(gt) # Added for enhanced table formatting
+library(webshot2) # Added for saving gt tables as PNG
 ```
 
 # 2. Load data
@@ -302,7 +304,6 @@ for (subj_id in unique_subjects) {
 }
 ```
 
-
 # 6. Combined Reward Probability and Salient Feedback Visualization
 
 ```{r combined_reward_prob_plots, fig.width=8, fig.height=4}
@@ -381,6 +382,230 @@ for (subj_id in unique_subjects) {
     dpi = 300
   )
 }
+```
+
+# 6.1 Pre-calculate Accuracy Metrics
+
+```{r precalculate_accuracy_metrics}
+# This chunk calculates accuracy metrics needed for the summary table later.
+# It uses `all_task_data` which should be loaded in a previous chunk.
+
+# Filter out missed trials (where choice is NA) and trials with fast RTs (e.g., < 150ms)
+# Ensure this RT filter is consistent with how you define valid trials for accuracy.
+accuracy_data_for_table <- all_task_data %>% 
+  filter(!is.na(choice)) %>% 
+  # Assuming reaction_time filtering is desired for accuracy metric in the table.
+  # If not, this filter can be removed or adjusted.
+  filter(is.na(reaction_time) | reaction_time >= 0.150) 
+
+# Determine if the participant chose the strictly better option, assigning 0.5 for ties.
+accuracy_data_for_table <- accuracy_data_for_table %>%
+  mutate(
+    chose_better_option = case_when(
+      reward_prob_1 > reward_prob_2 ~ ifelse(choice == 0, 1, 0), # Chose A when A was better
+      reward_prob_2 > reward_prob_1 ~ ifelse(choice == 1, 1, 0), # Chose B when B was better
+      reward_prob_1 == reward_prob_2 ~ 0.5, # Tie situation, assign 0.5
+      TRUE ~ NA_real_ # Handle any unexpected cases
+    )
+  ) %>%
+  filter(!is.na(chose_better_option)) # Remove trials where accuracy couldn't be determined (e.g. NA reward_probs)
+
+# Calculate mean accuracy per participant
+accuracy_summary_for_table <- accuracy_data_for_table %>%
+  group_by(subject_id) %>% 
+  summarise(
+    Accuracy = mean(chose_better_option, na.rm = TRUE),
+    .groups = 'drop'
+  )
+
+cat("Accuracy summary for table pre-calculated.\n")
+# print(accuracy_summary_for_table) # Optional: uncomment to see the raw accuracy data
+```
+
+# 6.2 Individual Participant Choice & Reward Diagnostics
+
+```{r individual_choice_reward_diagnostics, fig.width=10, fig.height=6}
+# Ensure a directory for these specific diagnostic plots exists
+diag_figs_dir <- here::here("analysis_scripts", "figures", "individual_choice_diagnostics")
+if (!dir.exists(diag_figs_dir)) {
+  dir.create(diag_figs_dir, recursive = TRUE)
+}
+
+# Get unique subject IDs from the loaded data
+unique_subject_ids <- sort(unique(all_task_data$subject_id)) # Sort for consistent column order
+
+# Initialize a list to store stats for each participant
+all_participant_stats <- list()
+
+# Loop through each subject ID
+for (current_subject_id in unique_subject_ids) {
+  
+  # Minimal console output, diagnostics moved to table and plots
+  # cat(paste("\n--- Processing Participant:", current_subject_id, "---\n")) 
+  
+  p_data <- all_task_data %>% 
+    filter(subject_id == current_subject_id) %>%
+    arrange(trial)
+
+  p_data_valid <- p_data %>% 
+    filter(!is.na(choice) & !is.na(reward))
+  
+  prop_choice_0 <- NA_real_
+  prop_choice_1 <- NA_real_
+  overall_reward_rate_p <- NA_real_
+  win_stay_prob_p <- NA_real_
+  current_accuracy <- NA_real_ # Initialize accuracy for the current subject
+
+  if (nrow(p_data_valid) > 0) {
+    prop_choice_0 <- sum(p_data_valid$choice == 0) / nrow(p_data_valid)
+    prop_choice_1 <- 1 - prop_choice_0
+    overall_reward_rate_p <- sum(p_data_valid$reward == 1) / nrow(p_data_valid)
+    
+    win_stay_count_p <- 0
+    opportunities_to_win_stay_p <- 0
+    if (nrow(p_data_valid) > 1) {
+      for (i in 1:(nrow(p_data_valid) - 1)) {
+        if (p_data_valid$reward[i] == 1) {
+          opportunities_to_win_stay_p <- opportunities_to_win_stay_p + 1
+          if (p_data_valid$choice[i+1] == p_data_valid$choice[i]) {
+            win_stay_count_p <- win_stay_count_p + 1
+          }
+        }
+      }
+    }
+    if (opportunities_to_win_stay_p > 0) {
+      win_stay_prob_p <- win_stay_count_p / opportunities_to_win_stay_p
+    }
+    
+    # Fetch pre-calculated accuracy for this participant
+    # Ensure accuracy_summary_for_table is available from the previous chunk
+    if (exists("accuracy_summary_for_table") && current_subject_id %in% accuracy_summary_for_table$subject_id) {
+      current_accuracy <- accuracy_summary_for_table$Accuracy[accuracy_summary_for_table$subject_id == current_subject_id]
+    }
+
+    p_plot_df <- p_data_valid %>%
+      mutate(
+        plot_choice = factor(choice, levels = c(0, 1), labels = c("Stimulus 0", "Stimulus 1")),
+        plot_reward = factor(reward, levels = c(0, 1), labels = c("No Reward", "Reward"))
+      )
+
+    p_behavior_plot <- ggplot(p_plot_df, aes(x = trial)) +
+      geom_point(aes(y = choice, color = "Choice"), size = 2) +
+      geom_point(aes(y = choice + ifelse(reward == 1, 0.2, -0.2), shape = plot_reward), size = 3) +
+      scale_shape_manual(values = c("No Reward" = 4, "Reward" = 16), name = "Reward") +
+      scale_y_continuous(breaks = c(0, 1), labels = c("Stimulus 0", "Stimulus 1"), limits = c(-0.5, 1.5)) +
+      labs(title = paste("Participant", current_subject_id, "- Choices and Rewards Over Valid Trials"),
+           x = "Trial Number (Valid)", y = "Choice") +
+      theme_minimal(base_size = 10) +
+      theme(plot.title = element_text(size=rel(0.9)))
+    
+    # Suppress printing plot to console if many subjects, to keep Rmd output cleaner
+    # It will still be saved.
+    # print(p_behavior_plot) 
+    
+    plot_filename <- file.path(diag_figs_dir, paste0("participant_", current_subject_id, "_choice_reward_plot.png"))
+    ggsave(filename = plot_filename, plot = p_behavior_plot, width = 10, height = 4, bg = "white", dpi = 150)
+    # cat(paste("Plot for participant", current_subject_id, "saved to:", plot_filename, "\n"))
+  }
+  
+  all_participant_stats[[current_subject_id]] <- c(
+    `Prop. S0` = prop_choice_0,
+    `Prop. S1` = prop_choice_1,
+    `Rew. Rate` = overall_reward_rate_p,
+    `Accuracy` = current_accuracy, # Added Accuracy
+    `WS Prob` = win_stay_prob_p
+  )
+}
+
+# --- Create Summary Table --- 
+if (length(all_participant_stats) > 0) {
+  summary_df <- as.data.frame(do.call(cbind, all_participant_stats))
+  summary_df <- tibble::rownames_to_column(summary_df, var = "Metric")
+  
+  cat("\n\n--- Overall Participant Behavioral Summary Table ---\n")
+  
+  summary_table_gt <- summary_df %>% 
+    gt(rowname_col = "Metric") %>% 
+    tab_header(
+      title = "Participant Behavioral Summary",
+      subtitle = "Key metrics derived from task choices and rewards. Accuracy based on choosing higher reward probability option."
+    ) %>%
+    fmt_number(
+      columns = everything(),
+      decimals = 2,
+      use_seps = FALSE
+    ) %>% 
+    data_color(
+      columns = where(is.numeric),
+      rows = `Metric` == "Prop. S0",
+      colors = scales::col_quantile(
+        palette = "RdBu", 
+        domain = c(0.2, 0.8),
+        n = 25 
+      )
+    ) %>% 
+    data_color(
+      columns = where(is.numeric),
+      rows = `Metric` == "Prop. S1",
+      colors = scales::col_quantile(
+        palette = "RdBu", 
+        domain = c(0.2, 0.8),
+        n = 25,
+        reverse = TRUE 
+      )
+    ) %>% 
+    data_color(
+      columns = where(is.numeric),
+      rows = `Metric` == "Rew. Rate",
+      colors = scales::col_numeric(
+        palette = "Greens",
+        domain = c(min(summary_df[summary_df$Metric == "Rew. Rate", -1], na.rm=TRUE), 
+                   max(summary_df[summary_df$Metric == "Rew. Rate", -1], na.rm=TRUE)),
+        na.color = "#FFFFFF00"
+      )
+    ) %>% 
+    data_color(
+      columns = where(is.numeric),
+      rows = `Metric` == "Accuracy", # Added styling for Accuracy
+      colors = scales::col_numeric(
+        palette = "Blues", # Or "Oranges", "Purples" etc.
+        domain = c(min(summary_df[summary_df$Metric == "Accuracy", -1], na.rm=TRUE), 
+                   max(summary_df[summary_df$Metric == "Accuracy", -1], na.rm=TRUE)), 
+        na.color = "#FFFFFF00"
+      )
+    ) %>% 
+    data_color(
+      columns = where(is.numeric),
+      rows = `Metric` == "WS Prob",
+      colors = scales::col_numeric(
+        palette = "Purples",
+        domain = c(min(summary_df[summary_df$Metric == "WS Prob", -1], na.rm=TRUE), 
+                   max(summary_df[summary_df$Metric == "WS Prob", -1], na.rm=TRUE)),
+        na.color = "#FFFFFF00"
+      )
+    ) %>%
+    tab_options(
+      table.width = pct(100),
+      column_labels.font.weight = "bold"
+    ) %>%
+    tab_source_note(
+      source_note = md("**Note**: `Prop. S0` refers to the proportion of trials where Stimulus 0 (original coding) was chosen. Accuracy calculated against choosing the option with higher `reward_prob`.")
+    )
+    
+  print(summary_table_gt)
+  
+  gt_html_filename <- file.path(diag_figs_dir, "participant_behavioral_summary_table.html")
+  gtsave(summary_table_gt, filename = gt_html_filename)
+  cat(paste("\nSummary table (HTML) saved to:", gt_html_filename, "\n"))
+
+  gt_png_filename <- file.path(diag_figs_dir, "participant_behavioral_summary_table.png")
+  gtsave(summary_table_gt, filename = gt_png_filename, vwidth = 1200, vheight = 800) # Adjust vwidth/vheight as needed
+  cat(paste("Summary table (PNG) saved to:", gt_png_filename, "\n"))
+  
+} else {
+  cat("No participant statistics collected to generate summary table.\n")
+}
+
 ```
 
 # 7. Accuracy Analysis and Boxplot
@@ -626,7 +851,7 @@ plot_data_by_id <- accuracy_summary %>%
 
 # Ensure n_subjects_accuracy is available (calculated in a previous chunk)
 if (!exists("n_subjects_accuracy")) {
-  n_subjects_accuracy <- nrow(accuracy_summary) # Should be nrow(plot_data_by_id)
+  n_subjects_accuracy <- nrow(accuracy_summary)
 }
 
 # Create the dot plot, sorted by participant ID
