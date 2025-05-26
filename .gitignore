@@ -51,3 +51,6 @@ tmp_*
 # Data
 *.csv
 *.tsv
+
+# Thesis
+thesis/
