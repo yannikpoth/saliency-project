@@ -225,6 +225,8 @@ ggsave(
   units = "in",
   dpi = 300
 )
+
+rt_histogram_subject
 ```
 
 # 5. Reward Probability and Salient Feedback Visualization
@@ -302,6 +304,8 @@ for (subj_id in unique_subjects) {
     dpi = 300
   )
 }
+
+combined_plot
 ```
 
 # 6. Combined Reward Probability and Salient Feedback Visualization
@@ -382,6 +386,8 @@ for (subj_id in unique_subjects) {
     dpi = 300
   )
 }
+
+combined_plot_single
 ```
 
 # 6.1 Pre-calculate Accuracy Metrics
@@ -765,9 +771,7 @@ ggsave(
   dpi = 300
 )
 
-# Display the plot (optional, good for interactive Rmd use)
-# print(accuracy_boxplot)
-
+accuracy_boxplot
 ```
 
 # 7.1 Individual Participant Accuracy
@@ -834,7 +838,7 @@ ggsave(
 )
 
 # Display the plot
-print(individual_accuracy_plot)
+individual_accuracy_plot
 
 ```
 
@@ -902,7 +906,7 @@ ggsave(
 )
 
 # Display the plot
-print(individual_accuracy_by_id_plot)
+individual_accuracy_by_id_plot
 
 ```
 
@@ -1011,6 +1015,6 @@ ggsave(
 )
 
 # Display the plot
-# print(learning_curve_plot)
+learning_curve_plot
 
 ```

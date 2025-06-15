@@ -33,6 +33,7 @@ __pycache__/
 *.m4p
 *.m4b
 *.m4p
+*.pdf
 
 # Cursor
 .cursorrules
