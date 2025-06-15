@@ -1,0 +1,145 @@
+% Method section content
+
+\subsection{Participants}
+
+The final analyzed sample consisted of 44 individuals. This group comprised 22 participants identifying as female, 21 as male, and one as non-binary. Participant ages ranged from 18 to 54 years ($M = 24.86$, $SD = 7.02$). Nearly half of the participants (47.73\%) were enrolled in psychology programs at the University of Cologne.
+
+Inclusion criteria for this study specified an age range of 18–60 years and no self-reported history of current or past neurological or psychiatric disorders. The exclusion of individuals with neurological or psychiatric conditions was implemented to ensure sample homogeneity and the validity of findings related to reinforcement learning, as these conditions can significantly alter underlying neural and cognitive processes \citep{pike2022}; this criterion also served an ethical purpose by avoiding potential additional stress for vulnerable individuals. The age range was established to minimize potential confounds from age-related changes in dopaminergic systems critical for reinforcement learning \citep{bolenz2019}. Individuals outside these criteria, or those who self-reported other conditions that might substantially interfere with task performance, were excluded. All 44 recruited participants met these criteria and completed the study.
+
+The target sample size was determined a priori using G*Power (Version 3.1; \citealt{faul2007}). An anticipated moderate effect size of Cohen's $d = 0.4$ was used for this calculation. This effect size was selected based on a review of existing literature investigating the influence of salient sensory cues on decision-making and learning processes. While direct research on the precise impact of salient feedback on learning rate parameters is still developing, studies on related phenomena—such as the promotion of riskier choices by SRCs \citep{cherkasova2018, cherkasova2024} or the modulation of decision strategies by salient information \citep{liu2018, mereu2010}—report moderate effect sizes, typically ranging from Cohen's $d \approx 0.5$ to 0.7. A slightly more conservative estimate of Cohen's $d = 0.4$ was chosen for the present study to account for potential individual differences in susceptibility to salient cues and the specific focus on learning rate modulation, rather than broader choice behavior. To detect an effect of this magnitude for the primary directional hypothesis regarding learning rates (Hypothesis 1.1) with $\alpha = .05$ and 80\% power ($1 - \beta = .80$) for a one-tailed dependent means $t$-test, a minimum of 41 participants was required. This was rounded to 42 to support gender-balanced recruitment, with non-binary individuals also welcomed. Although the primary analyses utilize Bayesian hierarchical modeling, this conventional power analysis informed the sample size target. The final sample of 44 participants exceeded this minimum.
+
+Recruitment utilized multiple channels. Primarily, participants were sourced from the University of Cologne's subject pool, with study advertisements disseminated through the study portal of the Faculty of Human Sciences and institutional email distribution lists. These efforts were supplemented by physical posters displayed on campus, outreach within student WhatsApp groups, and word-of-mouth referrals.
+
+Participation in the study lasted approximately 40 minutes. As compensation, individuals selected either course credit, equivalent to 0.75 participant hours for University of Cologne students, or a monetary payment of €8, calculated at a rate of €12 per hour. Furthermore, all participants were eligible for a performance-based cash bonus of up to €3, contingent on points earned during the task and awarded independently of their chosen base compensation.
+
+\subsection{Materials}
+
+\subsubsection{Task Apparatus}
+
+The experiment was administered on a desktop computer equipped with a 24-inch LCD monitor displaying stimuli at a resolution of 1920×1080 pixels. Participants wore Sennheiser HD 280 Pro closed-back headphones for the delivery of auditory stimuli throughout the task.
+
+The experimental task was developed and executed within a Python 3.10.0 (64-bit) environment. Precise visual stimulus presentation, timing control, and response collection were managed using PsychoPy (v2024.2.4; \citealt{peirce2019}). Auditory feedback, including continuous background music and distinct salient feedback sounds, was handled via Pygame (v2.6.1).
+
+\subsubsection{Task Stimuli}
+
+In each trial of the main task, participants chose between two distinct fractal images. These images were generated using DALL-E 3 \citep{openai2024} to serve as unique choice options. The stimuli shared several core visual characteristics, including intricate, high-contrast symmetrical designs, a luminous quality that created a sense of depth, and a clear central emphasis. Both images were consistently displayed within identical rounded square frames featuring metallic gradient borders. While similar in fundamental visual properties and presentation, the two images primarily differed in their dominant color and overall pattern, with one featuring a red, radial or starburst design, and the other a blue, geometric grid conveying an architectural appearance. For the practice trials, two similarly constructed and framed fractal images were utilized, one colored green and the other purple.
+
+For all choices, an immediate visual confirmation was provided by a simple border appearing around the selected stimulus paired with immediate text feedback informing about win or loss. On designated win trials, this standard feedback was augmented by a salient visual display. A three-second animation of the chosen stimulus, inspired by electronic gambling machine visuals and created by the author using Apple Motion (v5.7), featured a pulsating, blooming effect with dynamic lighting and contrast shifts designed to accentuate the fractal's structure, enhance depth and movement, and thereby maximize visual salience.
+
+The auditory environment was characterized by continuous, ambient, and spacey background music track played throughout the task. The track has a duration of 105 seconds that looped seamlessly. It featured a sustained, modulated dynamic profile intended to be consistent yet non-intrusive. Distinctly, salient visual animations were paired with a three-second, high-amplitude, explosive sound effect, designed as an exaggerated, attention-capturing auditory cue. Both the background music and the salient sound effect were composed by the author using Apple Logic Pro (v10.7.7).
+
+\subsubsection{Questionnaires}
+
+Following the experimental task, participants completed a series of questionnaires presented digitally via a custom Python program. These included standardized measures of personality traits and a study-specific evaluation questionnaire.
+
+To assess impulsivity, the short German version of the Barratt Impulsiveness Scale (BIS-15; \citealt{meule2011}) was administered. This 15-item self-report measure evaluates impulsivity across three subdimensions: non-planning, motor, and attentional impulsivity. Participants respond on a 4-point Likert scale, with higher total scores indicating greater levels of impulsivity. The German BIS-15 has demonstrated good reliability, with a Cronbach's alpha of .81 for the total scale, and has established validity in German-speaking samples \citep{meule2011}.
+
+Sensation seeking was measured using an 8-item German short version of the Sensation Seeking Scale (SSS; \citealt{grimm2015}), adapted from Zuckerman's original work \citep{zuckerman1979}. This instrument assesses four facets: Thrill and Adventure Seeking, Experience Seeking, Disinhibition, and Boredom Susceptibility. For each item, participants choose between two statements. One item within the Experience Seeking subdimension was adapted by the author to replace culturally insensitive language with contemporary, non-stigmatizing terms, while aiming to preserve the item's original intent of assessing openness to unconventional groups. It is noted that this adapted short version lacks formal psychometric validation data.
+
+Finally, participants completed a custom-designed evaluation questionnaire to provide feedback on their experience during the study. This brief questionnaire comprised nine items, employing a mix of open-ended and closed-ended questions. The open-ended items aimed to explore participants' understanding of the study's overall goal and their subjective perceptions of the task, particularly regarding the audiovisual feedback. Closed-ended items assessed awareness of the salient feedback manipulations and their perceived influence on decision-making and motivation. The responses to this questionnaire were intended for qualitative exploration and were not part of the primary quantitative analyses.
+
+\subsection{Procedure}
+
+Upon arrival, participants provided written informed consent and were seated in a quiet, isolated testing room with headphones. A custom Python script administered the entire experimental session. On-screen instructions introduced the restless two-armed bandit task. These explained that the objective was to accumulate points by selecting between two visual options using arrow keys, with immediate feedback following each choice. The instructions emphasized that reward probabilities would fluctuate throughout the task, requiring continuous adaptation of choice strategy. They clarified that the visual symbol chosen was relevant rather than its screen position. Participants were also informed, that some wins would feature ``special effects''—salient audiovisual feedback—and that performance could earn a bonus of up to €3.00.
+
+A 15-trial practice phase followed to familiarize individuals with the task mechanics, including both non-salient and salient feedback types. To mitigate novelty effects, the salient audiovisual feedback during practice followed the same reinforcement schedule as the main task. Different stimuli were used for practice trials to prevent stimulus-specific learning from transferring.
+
+After a brief on-screen reminder of task goals, the main experimental phase commenced with 200 trials, a number selected to enable robust analysis of learning dynamics under different feedback conditions. Throughout both phases, an experimenter remained available to address any technical issues. Upon task completion, digital questionnaires were administered in fixed order: the Barratt Impulsiveness Scale (BIS-15), the Sensation Seeking Scale (SSS), and an experiment-specific evaluation questionnaire. This sequence was designed to assess stable personality traits before exploring specific experimental experiences. The session concluded with a brief debriefing about the study's purpose—investigating how salient audiovisual feedback influences learning and decision-making. Each participant received their predetermined compensation after being thanked for their involvement.
+
+\subsection{Task Design}
+
+Participants engaged in a restless two-armed bandit task, requiring them to make repeated choices between two visual stimuli to maximize their accumulated points.
+
+\subsubsection{Basic Structure and Trial Events}
+
+On each trial, two distinct images (as described in 3.2.2 Task Stimuli) were presented concurrently on the screen. The on-screen positions (left or right) of these two stimuli were randomized on each trial to ensure that participants learned to associate rewards with the identity of the chosen stimulus rather than its spatial location. Choices were made using the left and right arrow keys. Internally, one specific stimulus was consistently mapped to a choice code of `0' and the other to `1' throughout the main task for each participant.
+
+The sequence of events within a trial was precisely timed. The two choice stimuli were displayed until the participant responded or a 5-second response window expired. If no response was made within this window, the trial was marked as missed and no reward was delivered. Following a valid choice, feedback was presented immediately and remained on screen for 3 seconds. After the feedback offset, a central fixation cross (`+') appeared for a variable inter-trial interval (ITI), drawn from a normal distribution with a mean of 1 second and a standard deviation of 0.5 seconds (minimum ITI: 0.5 seconds), before the next trial commenced.
+
+\subsubsection{Reward Structure and ``Restless'' Probabilities}
+
+A choice on any given trial resulted in a binary outcome: either a reward (win) or no reward (loss). The binary structure was deliberately selected to provide clear win/no-win signals, thereby simplifying the learning problem. This methodological approach allows the investigation to focus specifically on how salience modulates the processing of discrete outcomes, rather than examining responses to varying reward magnitudes.
+
+The experimental design employed a dynamic probabilistic structure wherein reward probabilities for both options varied independently and continuously, requiring participants to constantly update their value estimations. These underlying reward probabilities were generated using a decaying Gaussian random walk model, consistent with established methodologies in the field \citep{daw2006}. Initial reward probabilities for each option were drawn from a Gaussian distribution ($\mu_{t_0} = 0.5$; $\sigma_o = 0.04$). Subsequently, these probabilities evolved according to a formula $\mu_{i,t+1} = \lambda\mu_{i,t} + (1-\lambda)\theta + \nu_t$, where $\mu_{i,t}$ represents the reward probability for option $i$ at trial $t$, $\lambda = 0.9836$ is the decay parameter causing gradual reversion toward the decay center $\theta = 0.5$, and $\nu_t$ is Gaussian diffusion noise ($\mu = 0$, $\sigma_d = 0.065$). To increase environmental volatility, the diffusion noise terms between the two options were partially negatively correlated (corr = 0.35), with all probabilities constrained within the [0, 1] range. To prevent boundary stagnation and maintain participant engagement, both options' probabilities were periodically reset to 0.5 at irregular intervals (approximately every 30 trials on average, with temporal variability). The actual reward delivery on any given trial was determined stochastically by comparing the selected option's true underlying reward probability against a randomly generated number.
+
+\subsubsection{Feedback Conditions}
+
+When a choice resulted in a reward, the feedback provided was either non-salient or salient. The type of feedback delivered upon a win was determined by a variable reinforcement pattern. This pattern was generated by repeatedly shuffling a base binary sequence (e.g., [0, 0, 0, 1], where 1 signified salient feedback eligibility and 0 non-salient) and then concatenating these shuffled blocks. This procedure ensured that salient feedback occurred, on average, for one out of every four wins, but in an unpredictable, variable sequence across rewarded trials. The visual and auditory details of non-salient and salient feedback are described in the Materials section (3.2.2 Task Stimuli). Regardless of whether feedback was non-salient or salient, winning choices were always accompanied by on-screen text indicating ``+100 Punkte'' (German for ``+100 points''). If a choice resulted in a loss, the visual feedback was consistently non-salient, involving a static border around the chosen stimulus and on-screen text indicating ``+0 Punkte'' (German for ``+0 points''); in such instances, only the continuous background music was audible, with no specific loss-related sound effect. Missed trials, occurring when participants failed to respond within the 5-second window, triggered a ``Zu spät'' message (German for ``too late'') and were distinctly coded.
+
+\subsubsection{Data Collection}
+
+Comprehensive data were recorded meticulously for each trial. This included participant ID, experimental phase (practice or main), trial number, the participant's choice (coded 0 or 1, or None if missed), reaction time, reward outcome (1 for win, 0 for loss), feedback condition code (0 for non-salient, 1 for salient, 2 for missed trial), and the true underlying reward probabilities for both options on that trial. This trial-by-trial data was saved in real-time to a comma-separated values (CSV) file, uniquely named for each participant.
+
+\subsection{Ethical Considerations}
+
+The study protocol, encompassing all materials and procedures, received approval from the Ethics Committee of the Faculty of Human Sciences, University of Cologne (Ethikkommission der Humanwissenschaftliche Fakultät, Universität zu Köln; Approval No. JPHF0271, granted on December 11, 2024). All participants provided written informed consent before participation. Data were collected and stored anonymously, using unique participant IDs to ensure confidentiality and compliance with General Data Protection Regulation (GDPR), as detailed in the study's preregistration \citep{poth2025}.
+
+\subsection{Statistical Approach}
+
+Data preprocessing, visualization, and statistical analyses were conducted using R (Version 4.4.1; \citealt{rcore2024}). The hierarchical Bayesian models were specified and fitted using Stan (Version 2.32.2; \citealt{stan2025}), interfaced from R with the \texttt{rstan} package (Version 2.32.6; \citealt{standev2024}).
+
+\subsubsection{Data Preprocessing}
+
+All primary analyses were focused on data from the 200 main experimental trials per participant, excluding the 15 practice trials. Trials where participants failed to respond within the 5-second window were treated as missing data. These missed trials were coded with sentinel values (-9) and were subsequently ignored in the likelihood calculation of the reinforcement learning models, ensuring they did not contribute to parameter estimation. No other systematic data cleaning was applied before the primary model fitting.
+
+\subsubsection{Model-Agnostic Behavioral Analysis}
+
+To provide model-agnostic insights into choice behavior, two primary analyses were specified.
+
+First, to directly test Hypothesis 1.2, a win-stay analysis was conducted. Win-stay probability—the conditional probability of selecting the same option on trial $t+1$ after it was rewarded on trial $t$—was calculated for each participant. These probabilities were computed separately for trials following non-salient wins versus salient wins. A paired-samples $t$-test is specified to compare these two conditions, with the Wilcoxon signed-rank test designated as a non-parametric alternative if the normality assumption is violated. This analysis directly assesses whether salient feedback increases the tendency to repeat a rewarded choice.
+
+Second, as an exploratory step not specified in the pre-registration, a generalized linear mixed-effects model (GLMM) was fitted to provide a more nuanced, trial-by-trial description of learning. This approach moves beyond simple choice repetition to examine how feedback influences the \textit{quality} of decisions. A logistic GLMM was fitted to analyze factors influencing whether a choice was optimal (i.e., directed at the stimulus with the higher true reward probability). The dependent variable was a binary indicator of choice optimality on each trial. The fixed effects included the outcome of the previous trial (loss, non-salient win, or salient win) and the trial number (to control for time-on-task effects). A random intercept for each participant was included to account for baseline differences in choice strategy. This analysis helps to disentangle whether feedback promotes simple behavioral repetition or genuine learning of the task structure.
+
+\subsubsection{Hierarchical Bayesian Modeling}
+
+In addition to the analysis of model-agnostic performance indices, the main focus was on computational modeling using a hierarchical Bayesian approach. A range of competing computational accounts of behavior was compared to identify the most parsimonious model explaining the data.
+
+The models were constructed from a common set of components: a learning rule to update stimulus values and a choice rule to generate action probabilities. They differ in their complexity regarding the influence of feedback salience and choice history.
+
+The \textit{learning rule} is based on the Rescorla-Wagner model \citep{rescorla1972}, where the expected value (Q-value) for a chosen stimulus $i$ on trial $t$ is updated based on a prediction error:
+\begin{equation*}
+    Q_{t+1}(i) = Q_t(i) + \alpha_{\text{eff}} \cdot \delta_t
+\end{equation*}
+The prediction error, $\delta_t = r_t - Q_t(i)$, is the discrepancy between the reward received ($r_t \in \{0, 1\}$) and the expected value. The effective learning rate, $\alpha_{\text{eff}}$, is modulated by feedback salience. To constrain learning rates to the [0, 1] interval, raw parameters are transformed using the standard normal cumulative distribution function ($\Phi$):
+\begin{equation*}
+    \alpha_{\text{eff}} = 
+    \begin{cases} 
+        \Phi(\alpha_{\text{raw}} + \alpha_{\text{shift\_raw}}) & \text{if feedback is salient} \\
+        \Phi(\alpha_{\text{raw}}) & \text{if feedback is non-salient}
+    \end{cases}
+\end{equation*}
+Initial Q-values for both stimuli were set to 0.5, representing no initial preference.
+
+The \textit{choice rule} uses a softmax function to transform Q-values into choice probabilities. The probability of selecting stimulus $i$ on trial $t$ is given by:
+\begin{equation*}
+    P(i_t = i) = \frac{\exp(\beta \cdot Q_t(i))}{\sum_{j=1}^{2} \exp(\beta \cdot Q_t(j))}
+\end{equation*}
+where the inverse temperature parameter, $\beta$, controls choice stochasticity. It is transformed from an unbounded raw parameter to the range [0, 10] via $\beta = \Phi(\beta_{\text{raw}}) \cdot 10$.
+
+To account for choice repetition tendencies, an extension to the choice rule includes a \textit{perseveration bonus}, $\kappa$. This parameter modifies the choice logits as follows:
+\begin{equation*}
+    P(i_t = i) = \frac{\exp(\beta \cdot Q_t(i) + \kappa \cdot I(i = c_{t-1}))}{\sum_{j=1}^{2} \exp(\beta \cdot Q_t(j) + \kappa \cdot I(j = c_{t-1}))}
+\end{equation*}
+where $I(x)$ is an indicator function that equals 1 if condition $x$ is true, and 0 otherwise. A positive $\kappa$ indicates a tendency to perseverate, while a negative $\kappa$ indicates a switching bias.
+
+Three competing models were specified by combining these components:
+\begin{enumerate}
+    \item \textbf{M1 (Baseline):} A standard Rescorla-Wagner model, using the basic learning rule (i.e., $\alpha_{\text{shift\_raw}}$ is fixed to 0) and the basic softmax choice rule. This model has two free parameters: $\alpha$ and $\beta$.
+    \item \textbf{M2 (Salience-Shift):} The primary model of interest, which uses the salience-modulated learning rule and the basic softmax choice rule. It has three free parameters: $\alpha$, $\alpha_{\text{shift}}$, and $\beta$.
+    \item \textbf{M3 (Salience-Shift + Perseveration):} The most complex model, using the salience-modulated learning rule and the extended choice rule with the perseveration parameter, $\kappa$. It has four free parameters: $\alpha$, $\alpha_{\text{shift}}$, $\beta$, and $\kappa$.
+\end{enumerate}
+
+A hierarchical Bayesian approach was used, where subject-level parameters are assumed to be drawn from group-level distributions. This method allows for robust estimation of individual differences while borrowing statistical strength across the sample. All raw parameters ($\alpha_{\text{raw}}, \alpha_{\text{shift\_raw}}, \beta_{\text{raw}}, \kappa_{\text{raw}}$) were drawn from group-level normal distributions, each defined by a mean and a standard deviation. Weakly informative priors were selected for these group-level hyperparameters:
+\begin{itemize}
+    \item Group-level means for raw alpha and beta ($\alpha_{\mu\_\text{raw}}, \beta_{\mu\_\text{raw}}$): $\text{Uniform}(-4, 4)$
+    \item Group-level mean for raw alpha-shift and kappa ($\alpha_{\text{shift}\_\mu\_\text{raw}}, \kappa_{\mu\_\text{raw}}$): $\text{Normal}(0, 1)$
+    \item Group-level standard deviations for all raw parameters: $\text{Uniform}(0.001, 3)$
+\end{itemize}
+
+The models were fitted using Stan's Hamiltonian Monte Carlo sampler. Four parallel chains were run for 10,000 iterations each. The first 8,000 iterations of each chain were discarded as warmup, leaving 2,000 posterior samples per chain for analysis. Model convergence was assessed by ensuring the Gelman-Rubin statistic ($\hat{R}$) was below 1.01 for all parameters and by visual inspection of trace plots. Posterior predictive checks were planned to evaluate model fit by comparing simulated data generated from the model posteriors to the observed data.
+
+Formal model comparison will be performed using the \texttt{loo} R package \citep{vehtari_practical_2017}. Specifically, the estimated log pointwise predictive density (elpd) will be calculated, which provides an index of a model's out-of-sample predictive accuracy using leave-one-out cross-validation. The model with the lowest elpd score (equivalent to the lowest Leave-One-Out Information Criterion, LOOIC) will be selected as the winning model. Inferences regarding the study's primary hypotheses will be based on the 95\% Highest Density Intervals (HDIs) of the posterior distributions from the winning model's parameters.
+
+\subsubsection{Exploratory Analysis of Interindividual Differences}
+
+To explore potential sources of interindividual variability, relationships between personality traits and model-derived parameters will be examined. The approach involves correlating the posterior mean estimates of the subject-level parameters from the winning model (e.g., $\alpha$, $\alpha_{\text{shift}}$, $\beta$, $\kappa$) with scores from the BIS-15 and SSS questionnaires (total and subscale scores). Depending on the distribution of the data, either Pearson's or Spearman's rank correlation coefficients will be calculated to probe for relationships between traits like impulsivity or sensation-seeking and individual learning or choice parameters. 

@@ -1,0 +1,18 @@
+\begin{figure*}[hbt]
+\ifnextchar[{\eatarg}{}
+[htbp]
+\centering
+% \includegraphics[width=0.8\textwidth]{figures/winstay_comparison.pdf}
+\caption{Win-stay probabilities following non-salient and salient wins. Each line represents one participant, with the thick lines showing group means and 95\% confidence intervals.}
+\label{fig:winstay}
+\end{figure*}
+\efloatseparator
+ 
+\begin{figure*}[hbt]
+\ifnextchar[{\eatarg}{}
+[htbp]
+\centering
+% \includegraphics[width=0.8\textwidth]{figures/learning_curves.pdf}
+\caption{Learning curves showing choice accuracy over trials, separated by feedback type in the preceding trial. Shaded areas represent 95\% confidence intervals.}
+\label{fig:learning_curves}
+\end{figure*}

@@ -1,0 +1,159 @@
+% Placeholder for Appendix 
+
+% Appendix content
+
+\section{Supplementary Materials}
+
+\subsection{Task Instructions (English Translation)}
+
+The following instructions were presented to participants in German. This is an English translation for reference:
+
+\begin{quote}
+Welcome to this experiment! In this task, you will make choices between two visual symbols to earn points. Your goal is to accumulate as many points as possible.
+
+On each trial, you will see two symbols on the screen. Use the left and right arrow keys to select the symbol you want to choose. After making your choice, you will receive feedback about whether you won points or not.
+
+Important: The probability of winning points for each symbol will change throughout the task. This means you need to pay attention to which symbol is currently better and adapt your strategy accordingly.
+
+The position of the symbols (left or right) will change randomly, but the symbols themselves remain the same. Focus on the identity of the symbol, not its position.
+
+Some wins will be accompanied by special audiovisual effects. These are just different ways of presenting the same win outcome.
+
+You can earn a bonus of up to €3 based on your performance in this task. Try to earn as many points as possible!
+
+Press SPACE to begin the practice trials.
+\end{quote}
+
+\subsection{Questionnaire Items}
+
+\subsubsection{Barratt Impulsiveness Scale (BIS-15) - German Version}
+
+The following items were presented with a 4-point Likert scale (1 = rarely/never, 2 = occasionally, 3 = often, 4 = almost always/always):
+
+\begin{enumerate}
+\item Ich plane Aufgaben sorgfältig. (I plan tasks carefully.)
+\item Ich tue Dinge ohne nachzudenken. (I do things without thinking.)
+\item Ich treffe schnelle Entscheidungen. (I make quick decisions.)
+\item Ich bin unbekümmert. (I am carefree.)
+\item Ich konzentriere mich nicht. (I don't concentrate.)
+\item Ich habe Gedanken, die sich schnell abwechseln. (I have racing thoughts.)
+\item Ich plane Reisen im Voraus. (I plan trips in advance.)
+\item Ich bin selbstbeherrscht. (I am self-controlled.)
+\item Ich konzentriere mich leicht. (I concentrate easily.)
+\item Ich spare regelmäßig. (I save regularly.)
+\item Ich winde mich und zappele bei Aufführungen oder Vorträgen. (I squirm at plays or lectures.)
+\item Ich bin ein sorgfältiger Denker. (I am a careful thinker.)
+\item Ich plane für Arbeitsplatzsicherheit. (I plan for job security.)
+\item Ich sage Dinge ohne nachzudenken. (I say things without thinking.)
+\item Ich mag es, über komplexe Probleme nachzudenken. (I like to think about complex problems.)
+\end{enumerate}
+
+\subsubsection{Sensation Seeking Scale (SSS) - German Short Version}
+
+Participants chose between two options for each item:
+
+\begin{enumerate}
+\item 
+\begin{itemize}
+\item[A] Ich würde gerne Fallschirmspringen lernen.
+\item[B] Ich würde niemals Fallschirmspringen wollen.
+\end{itemize}
+
+\item 
+\begin{itemize}
+\item[A] Ich ziehe Leute vor, die emotional ausdrucksstark sind, auch wenn sie etwas instabil sind.
+\item[B] Ich ziehe Leute vor, die emotional ausgeglichen sind.
+\end{itemize}
+
+[Additional items would be listed here...]
+\end{enumerate}
+
+\subsection{Model Specifications}
+
+\subsubsection{Stan Model Code}
+
+The hierarchical Bayesian reinforcement learning model was implemented in Stan. The complete model code is available in the project repository at: [REPOSITORY URL]
+
+Key model features:
+\begin{itemize}
+\item Hierarchical structure with group-level and subject-level parameters
+\item Rescorla-Wagner learning rule with salience modulation
+\item Softmax choice function
+\item Weakly informative priors
+\end{itemize}
+
+\subsubsection{Prior Specifications}
+
+Group-level priors:
+\begin{itemize}
+\item $\mu_\alpha \sim \text{Normal}(0, 1)$ (logit scale)
+\item $\sigma_\alpha \sim \text{Half-Normal}(0, 0.5)$
+\item $\mu_{\alpha_{\text{shift}}} \sim \text{Normal}(0, 0.5)$
+\item $\sigma_{\alpha_{\text{shift}}} \sim \text{Half-Normal}(0, 0.5)$
+\item $\mu_\beta \sim \text{Normal}(0, 1)$ (log scale)
+\item $\sigma_\beta \sim \text{Half-Normal}(0, 0.5)$
+\end{itemize}
+
+\subsection{Additional Analyses}
+
+\subsubsection{Model Comparison}
+
+Alternative models were fitted to assess the necessity of the salience modulation parameter:
+
+\begin{enumerate}
+\item \textbf{Null Model:} Standard RL model without salience effects
+\item \textbf{Full Model:} RL model with salience-modulated learning rate
+\item \textbf{Alternative Model:} RL model with salience affecting choice temperature
+\end{enumerate}
+
+Model comparison was conducted using leave-one-out cross-validation (LOO-CV) and the Widely Applicable Information Criterion (WAIC).
+
+\subsubsection{Sensitivity Analyses}
+
+Robustness of findings was assessed through:
+\begin{itemize}
+\item Alternative prior specifications
+\item Exclusion of participants with high miss rates (>10\%)
+\item Analysis of different trial subsets (early vs. late trials)
+\end{itemize}
+
+\subsection{Data and Code Availability}
+
+\subsubsection{Data Sharing}
+
+Anonymized data supporting the conclusions of this study are available upon reasonable request to the corresponding author, subject to ethical approval and data protection regulations.
+
+\subsubsection{Code Repository}
+
+All analysis code, including data preprocessing, model fitting, and visualization scripts, is available at: [REPOSITORY URL]
+
+The repository includes:
+\begin{itemize}
+\item R scripts for data analysis
+\item Stan model files
+\item Python scripts for data collection
+\item Documentation and README files
+\end{itemize}
+
+\subsection{Ethical Approval Documentation}
+
+This study was approved by the Ethics Committee of the Faculty of Human Sciences, University of Cologne (Approval No. JPHF0271, granted December 11, 2024). The study was conducted in accordance with the Declaration of Helsinki and local institutional guidelines.
+
+\subsection{Preregistration}
+
+This study was preregistered prior to data collection. The preregistration document is available at: [PREREGISTRATION URL]
+
+\section{Declaration of Independent Work}
+
+I hereby declare that this master's thesis has been written independently and without unauthorized assistance. All sources and aids used have been properly cited and acknowledged. This work has not been submitted for any other academic degree or professional qualification.
+
+\vspace{2cm}
+
+\noindent
+Cologne, \today
+
+\vspace{2cm}
+
+\noindent
+\rule{6cm}{0.4pt}\\
+Yannik Poth 

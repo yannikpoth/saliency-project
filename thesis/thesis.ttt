@@ -1,0 +1,35 @@
+\begin{table*}[hbt]
+\ifnextchar[{\eatarg}{}
+[htbp]
+\centering
+\caption{Posterior Estimates for Reinforcement Learning Model Parameters}
+\label{tab:rl_parameters}
+\begin{tabular}{lccc}
+\toprule
+Parameter & Mean & 95\% Credible Interval & $P(\text{parameter} > 0)$ \\
+\midrule
+Base Learning Rate ($\alpha$) & [PLACEHOLDER] & [[PLACEHOLDER], [PLACEHOLDER]] & -- \\
+Learning Rate Shift ($\alpha_{\text{shift}}$) & [PLACEHOLDER] & [[PLACEHOLDER], [PLACEHOLDER]] & [PLACEHOLDER] \\
+Inverse Temperature ($\beta$) & [PLACEHOLDER] & [[PLACEHOLDER], [PLACEHOLDER]] & -- \\
+\bottomrule
+\end{tabular}
+\end{table*}
+\efloatseparator
+ 
+\begin{table*}[hbt]
+\ifnextchar[{\eatarg}{}
+[htbp]
+\centering
+\caption{Correlations Between Individual Difference Measures and Model Parameters}
+\label{tab:correlations}
+\begin{tabular}{lcccc}
+\toprule
+ & $\alpha$ & $\alpha_{\text{shift}}$ & $\beta$ & Win-Stay Diff. \\
+\midrule
+BIS-15 Total & [PLACEHOLDER] & [PLACEHOLDER] & [PLACEHOLDER] & [PLACEHOLDER] \\
+ & $p = $ [PLACEHOLDER] & $p = $ [PLACEHOLDER] & $p = $ [PLACEHOLDER] & $p = $ [PLACEHOLDER] \\
+SSS Total & [PLACEHOLDER] & [PLACEHOLDER] & [PLACEHOLDER] & [PLACEHOLDER] \\
+ & $p = $ [PLACEHOLDER] & $p = $ [PLACEHOLDER] & $p = $ [PLACEHOLDER] & $p = $ [PLACEHOLDER] \\
+\bottomrule
+\end{tabular}
+\end{table*}

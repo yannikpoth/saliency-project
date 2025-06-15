@@ -1,0 +1,41 @@
+\contentsline {section}{\numberline {1}Introduction}{5}{section.1}%
+\contentsline {subsection}{\numberline {1.1}Reinforcement Learning as a Framework for Understanding Decision-Making}{5}{subsection.1.1}%
+\contentsline {subsection}{\numberline {1.2}Electronic Gambling Machines and Psychological Salience}{7}{subsection.1.2}%
+\contentsline {subsection}{\numberline {1.3}Neurocognitive Mechanisms of Salience and Reward Processing}{8}{subsection.1.3}%
+\contentsline {subsection}{\numberline {1.4}Individual Differences in Susceptibility to Salient Cues}{9}{subsection.1.4}%
+\contentsline {subsection}{\numberline {1.5}Research Gaps and Current Study}{10}{subsection.1.5}%
+\contentsline {section}{\numberline {2}Method}{12}{section.2}%
+\contentsline {subsection}{\numberline {2.1}Participants}{12}{subsection.2.1}%
+\contentsline {subsection}{\numberline {2.2}Materials}{13}{subsection.2.2}%
+\contentsline {subsubsection}{\numberline {2.2.1}Task Apparatus}{13}{subsubsection.2.2.1}%
+\contentsline {subsubsection}{\numberline {2.2.2}Task Stimuli}{13}{subsubsection.2.2.2}%
+\contentsline {subsubsection}{\numberline {2.2.3}Questionnaires}{14}{subsubsection.2.2.3}%
+\contentsline {subsection}{\numberline {2.3}Procedure}{15}{subsection.2.3}%
+\contentsline {subsection}{\numberline {2.4}Task Design}{16}{subsection.2.4}%
+\contentsline {subsubsection}{\numberline {2.4.1}Basic Structure and Trial Events}{16}{subsubsection.2.4.1}%
+\contentsline {subsubsection}{\numberline {2.4.2}Reward Structure and ``Restless'' Probabilities}{17}{subsubsection.2.4.2}%
+\contentsline {subsubsection}{\numberline {2.4.3}Feedback Conditions}{17}{subsubsection.2.4.3}%
+\contentsline {subsubsection}{\numberline {2.4.4}Data Collection}{18}{subsubsection.2.4.4}%
+\contentsline {subsection}{\numberline {2.5}Ethical Considerations}{18}{subsection.2.5}%
+\contentsline {subsection}{\numberline {2.6}Statistical Approach}{18}{subsection.2.6}%
+\contentsline {subsubsection}{\numberline {2.6.1}Data Preprocessing}{19}{subsubsection.2.6.1}%
+\contentsline {subsubsection}{\numberline {2.6.2}Model-Agnostic Behavioral Analysis}{19}{subsubsection.2.6.2}%
+\contentsline {subsubsection}{\numberline {2.6.3}Hierarchical Bayesian Modeling}{20}{subsubsection.2.6.3}%
+\contentsline {subsubsection}{\numberline {2.6.4}Exploratory Analysis of Interindividual Differences}{22}{subsubsection.2.6.4}%
+\contentsline {section}{\numberline {3}Results}{22}{section.3}%
+\contentsline {section}{\numberline {4}Discussion}{22}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Task Instructions (English Translation)}{27}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Questionnaire Items}{27}{subsection.4.2}%
+\contentsline {subsubsection}{\numberline {4.2.1}Barratt Impulsiveness Scale (BIS-15) - German Version}{27}{subsubsection.4.2.1}%
+\contentsline {subsubsection}{\numberline {4.2.2}Sensation Seeking Scale (SSS) - German Short Version}{28}{subsubsection.4.2.2}%
+\contentsline {subsection}{\numberline {4.3}Model Specifications}{29}{subsection.4.3}%
+\contentsline {subsubsection}{\numberline {4.3.1}Stan Model Code}{29}{subsubsection.4.3.1}%
+\contentsline {subsubsection}{\numberline {4.3.2}Prior Specifications}{29}{subsubsection.4.3.2}%
+\contentsline {subsection}{\numberline {4.4}Additional Analyses}{29}{subsection.4.4}%
+\contentsline {subsubsection}{\numberline {4.4.1}Model Comparison}{29}{subsubsection.4.4.1}%
+\contentsline {subsubsection}{\numberline {4.4.2}Sensitivity Analyses}{30}{subsubsection.4.4.2}%
+\contentsline {subsection}{\numberline {4.5}Data and Code Availability}{30}{subsection.4.5}%
+\contentsline {subsubsection}{\numberline {4.5.1}Data Sharing}{30}{subsubsection.4.5.1}%
+\contentsline {subsubsection}{\numberline {4.5.2}Code Repository}{30}{subsubsection.4.5.2}%
+\contentsline {subsection}{\numberline {4.6}Ethical Approval Documentation}{30}{subsection.4.6}%
+\contentsline {subsection}{\numberline {4.7}Preregistration}{30}{subsection.4.7}%

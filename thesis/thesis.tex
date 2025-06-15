@@ -1,0 +1,93 @@
+\documentclass[man,english,donotrepeattitle]{apa7}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+
+% Font setup for PDFLaTeX - using Helvetica as Calibri alternative
+\usepackage{helvet}
+\renewcommand{\familydefault}{\sfdefault} % Set sans-serif as default
+
+\usepackage{setspace}
+\setstretch{1.3} % Set line spacing to 1.3
+\usepackage{geometry}
+\geometry{left=3cm, right=2.5cm, top=2.5cm, bottom=3cm}
+
+% Page numbering setup
+\usepackage{fancyhdr}
+\usepackage{lastpage} % Required for X/Y page numbering
+\pagestyle{fancy}
+\fancyhf{}
+\rfoot{\thepage/\pageref{LastPage}}
+
+% Remove ALL headers and footers from title page
+\fancypagestyle{plain}{%
+  \fancyhf{}%
+  \renewcommand{\headrulewidth}{0pt}%
+  \renewcommand{\footrulewidth}{0pt}%
+}
+
+% Custom page style for title page that removes everything
+\fancypagestyle{titlepage}{%
+  \fancyhf{}%
+  \renewcommand{\headrulewidth}{0pt}%
+  \renewcommand{\footrulewidth}{0pt}%
+}
+
+% Enable section numbering (exclude title, abstract, and TOC)
+\setcounter{secnumdepth}{3}
+
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{amsmath}
+\usepackage[style=apa, backend=biber, natbib=true]{biblatex}
+\addbibresource{references.bib}
+
+\title{Illuminating Decisions: How Salient Reward-Paired Cues Modulate Learning and Choice Behavior}
+\shorttitle{} % Remove short title to prevent header display
+\author{Yannik Poth}
+\affiliation{Rheinisch-Westfälische Technische Hochschule Aachen}
+\course{Master of Science in Psychology} % Example, adjust as needed
+\date{\today}
+
+\begin{document}
+
+\maketitle % Generates the title page
+\thispagestyle{titlepage} % Use custom title page style with no numbering
+
+\pagestyle{empty} % Prevent headers/footers on subsequent pages (abstract, TOC)
+
+\newpage
+\begin{center}
+\textbf{Abstract}
+\end{center}
+\begin{abstract}
+\noindent This study investigates how salient audiovisual feedback influences learning rates and choice behavior in a reinforcement learning framework. Using a restless two-armed bandit task, 44 participants made repeated choices between visual stimuli while salient reward-paired cues were systematically manipulated using a variable reinforcement schedule. A hierarchical Bayesian reinforcement learning model was employed to quantify learning dynamics, specifically examining whether salient feedback modulates the learning rate parameter ($\alpha_{\text{shift}}$). Additionally, win-stay probabilities were analyzed to assess simple behavioral strategies. Individual differences in impulsivity and sensation seeking were explored as potential moderators. The research aims to understand how sensory salience affects learning processes and decision-making, with implications for understanding vulnerability to environments designed to maximize engagement, such as electronic gambling machines. Results provide insights into the mechanisms by which environmental design features can influence adaptive learning processes and potentially contribute to maladaptive choice patterns.
+\end{abstract}
+
+% Table of Contents
+\newpage
+\tableofcontents
+\newpage
+
+\pagestyle{fancy} % Restore fancy page style for the main document body
+
+% Introduction with proper heading
+\section{Introduction}
+\input{sections/01_introduction.tex}
+
+\section{Method}
+\input{sections/02_method.tex}
+
+\section{Results}
+\input{sections/03_results.tex}
+
+\section{Discussion}
+\input{sections/04_discussion.tex}
+
+\printbibliography
+
+\appendix
+\input{sections/05_appendix.tex}
+
+\end{document} 
