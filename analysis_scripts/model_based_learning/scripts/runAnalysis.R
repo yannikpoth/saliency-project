@@ -1,5 +1,5 @@
 #      Master Analysis Script -- Version 1
-# Last edit:    2024/07/25
+# Last edit:    2025/06/15
 # Author:       Yannik Poth (YP)
 #
 # Notes:        - This script performs the full analysis pipeline for the saliency project.
@@ -36,7 +36,7 @@ pacman::p_load(
   # Plotting & Tables
   patchwork, ggpubr, gt,
   # Utilities
-  here, janitor
+  here, janitor, shinystan
 )
 
 # Stan options
@@ -220,12 +220,12 @@ print("--- Starting Section 3: Hierarchical Bayesian Modeling ---")
 
 # Stan execution parameters
 nChains <- 4
-nIters <- 4000
-nWarmup <- 2000
+nIters <- 10000
+nWarmup <- 8000
 
 # Define models to run based on the method section
 # Assuming stan files are named accordingly, e.g., M1_Baseline.stan
-modelist <- c("M1_Baseline", "M2_Salience_Shift", "M3_Salience_Shift_Perseveration")
+modelist <- c("rl_cp_basic_uniform", "rl_cp_shift_uniform", "rl_cp_shift_perserv_uniform")
 model_files <- paste0("rls/models/", modelist, ".stan")
 names(model_files) <- modelist
 
