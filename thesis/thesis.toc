@@ -20,7 +20,7 @@
 \contentsline {subsection}{\numberline {2.6}Statistical Approach}{18}{subsection.2.6}%
 \contentsline {subsubsection}{\numberline {2.6.1}Data Preprocessing}{19}{subsubsection.2.6.1}%
 \contentsline {subsubsection}{\numberline {2.6.2}Model-Agnostic Behavioral Analysis}{19}{subsubsection.2.6.2}%
-\contentsline {subsubsection}{\numberline {2.6.3}Hierarchical Bayesian Modeling}{20}{subsubsection.2.6.3}%
+\contentsline {subsubsection}{\numberline {2.6.3}Hierarchical Bayesian Modeling}{19}{subsubsection.2.6.3}%
 \contentsline {subsubsection}{\numberline {2.6.4}Exploratory Analysis of Interindividual Differences}{22}{subsubsection.2.6.4}%
 \contentsline {section}{\numberline {3}Results}{22}{section.3}%
 \contentsline {section}{\numberline {4}Discussion}{22}{section.4}%

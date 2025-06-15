@@ -32,7 +32,7 @@ pacman::p_load(
   # Core
   tidyverse, rstan, loo, bayesplot,
   # Modeling & Stats
-  lme4, effsize,
+  lme4, effsize, ggeffects,
   # Plotting & Tables
   patchwork, ggpubr, gt,
   # Utilities
@@ -76,6 +76,8 @@ quest_data_raw <- read_tsv(file.path("data/processed", "all_questionnaire_data.t
 # Tidy task data
 task_data <- task_data_raw %>%
     filter(mode == "main") %>%
+    # Add RT filter: exclude trials faster than 150ms
+    filter(is.na(reaction_time) | reaction_time >= 0.150) %>%
     mutate(
       trial = as.integer(trial),
       choice = as.numeric(choice),
@@ -107,10 +109,10 @@ print(paste("Data prepared for", StanList$nSubs, "subjects."))
 # ---------------------------------------------
 print("--- Starting Section 2: Model-Agnostic Analyses ---")
 
-# 2.1. Win-Stay Probability Analysis (Hypothesis 1.2)
-print("Analyzing win-stay probability...")
+# 2.1. Win-Stay/Lose-Stay Probability Analysis (Hypothesis 1.2)
+print("Analyzing win-stay/lose-stay probability...")
 
-# Calculate win-stay probabilities
+# Calculate win-stay and lose-stay probabilities
 wsls_data <- task_data %>%
   filter(choice_fac != "Missed" & !is.na(reward_fac)) %>%
   arrange(subject_id, trial) %>%
@@ -121,15 +123,23 @@ wsls_data <- task_data %>%
     prev_condition = lag(condition_fac, 1)
   ) %>%
   ungroup() %>%
-  filter(!is.na(prev_choice) & !is.na(prev_reward) & prev_reward == "Win") %>%
+  filter(!is.na(prev_choice) & !is.na(prev_reward)) %>%
   mutate(
     stayed = (choice_fac == prev_choice),
-    outcome_type = ifelse(prev_condition == "Salient", "Salient Win", "Non-Salient Win")
+    outcome_type = case_when(
+      prev_reward == "Loss" ~ "Loss",
+      prev_reward == "Win" & prev_condition == "Salient" ~ "Salient Win",
+      prev_reward == "Win" & prev_condition == "Non-Salient" ~ "Non-Salient Win"
+    )
   )
 
-win_stay_summary <- wsls_data %>%
+wsls_summary <- wsls_data %>%
   group_by(subject_id, outcome_type) %>%
-  summarise(prob_stay = mean(stayed, na.rm = TRUE), .groups = "drop") %>%
+  summarise(prob_stay = mean(stayed, na.rm = TRUE), .groups = "drop")
+
+# For the statistical test, we only compare the two win conditions
+win_stay_summary <- wsls_summary %>%
+  filter(outcome_type %in% c("Salient Win", "Non-Salient Win")) %>%
   pivot_wider(names_from = outcome_type, values_from = prob_stay)
 
 # Perform statistical test
@@ -143,7 +153,7 @@ if (shapiro_test$p.value < 0.05) {
 }
 cohens_d <- cohen.d(win_stay_summary$`Salient Win`, win_stay_summary$`Non-Salient Win`, paired = TRUE)
 
-# Create and save results table
+# Create and save results table for the win-stay comparison
 win_stay_results_table <- tibble(
   Method = test_method,
   Statistic = test_result$statistic,
@@ -159,25 +169,119 @@ win_stay_results_table <- tibble(
 gtsave(win_stay_results_table, filename = file.path(tables_dir, "win_stay_test_results.png"))
 print(win_stay_results_table)
 
-# Create and save plot
-win_stay_long <- win_stay_summary %>%
-  pivot_longer(cols = c("Non-Salient Win", "Salient Win"), names_to = "condition", values_to = "prob_stay") %>%
-  mutate(condition = factor(condition, levels = c("Non-Salient Win", "Salient Win")))
+# 2.1.1. GLMM for Stay Probability (Exploratory)
+print("Fitting GLMM for stay probability across all outcomes...")
 
-win_stay_plot <- ggplot(win_stay_long, aes(x = condition, y = prob_stay, fill = condition)) +
-    ggdist::stat_halfeye(adjust = .5, width = .6, .width = 0, justification = -.3, point_color = NA) +
-    geom_boxplot(width = .15, outlier.shape = NA) +
-    geom_line(aes(group = subject_id), color = "grey60", alpha = 0.4) +
-    labs(title = "Win-Stay Probability by Feedback Condition",
-         subtitle = paste0(test_method, " (p = ", scales::pvalue(test_result$p.value, accuracy=0.001), ")"),
-         x = "Outcome on Previous Trial", y = "Probability of Staying") +
-    scale_fill_manual(values = c("Non-Salient Win" = "grey70", "Salient Win" = "gold")) +
-    scale_y_continuous(labels = scales::percent) +
-    theme_minimal() + 
-    theme(legend.position = "none")
+# Use all outcome types to model p(Stay) across all conditions
+glmm_wsls_data <- wsls_data %>%
+  mutate(
+    outcome_type = factor(outcome_type, levels = c("Loss", "Non-Salient Win", "Salient Win")),
+    stayed = as.factor(stayed), # Coerce logical to factor for ggeffects
+    trial_scaled = as.numeric(scale(trial)) # Add scaled trial number
+  )
 
-ggsave(file.path(plots_dir, "win_stay_probability.png"), plot = win_stay_plot, width = 8, height = 7, bg="white")
-print(win_stay_plot)
+# Fit the GLMM to predict the binary 'stayed' outcome
+glmm_wsls <- glmer(stayed ~ outcome_type + trial_scaled + (1 | subject_id),
+                   data = glmm_wsls_data, family = binomial,
+                   control = glmerControl(optimizer = "bobyqa"))
+
+# Create and save a results table for the GLMM
+broom.mixed::tidy(glmm_wsls, conf.int = TRUE, exponentiate = TRUE) %>%
+    gt() %>%
+    tab_header("Exploratory GLMM Results: Predicting Stay Behavior by Outcome") %>%
+    gtsave(file.path(tables_dir, "glmm_wsls_results.png"))
+
+# Get model-predicted probabilities to overlay on the plot
+wsls_glmm_preds <- ggeffects::ggpredict(glmm_wsls, terms = "outcome_type") %>%
+  as_tibble()
+
+# Create and save the improved plot with all three conditions
+# Prepare data for plotting: ensure outcome_type is a factor with the desired order
+wsls_plot_data <- wsls_summary %>%
+  mutate(outcome_type = factor(outcome_type, levels = c("Loss", "Non-Salient Win", "Salient Win")))
+
+# --- Pre-calculate violin plot line data ---
+# Build a temporary plot to extract the y-range of the density slabs
+p_build <- ggplot_build(
+  ggplot(wsls_plot_data, aes(x = outcome_type, y = prob_stay)) +
+    ggdist::stat_slab(side = "left", adjust = 0.5, trim = FALSE)
+)
+# Extract the min/max y-values and the (nudged) x-position for each group
+violin_lines_data <- p_build$data[[1]] %>%
+  as_tibble() %>%
+  group_by(group) %>%
+  summarise(
+    x = first(x),
+    ymin = min(y),
+    ymax = max(y)
+  )
+
+wsls_plot <- ggplot(wsls_plot_data, aes(x = outcome_type, y = prob_stay)) +
+
+    # Layer 1: Lines connecting individual subjects between all conditions
+    # geom_line(aes(group = subject_id), color = "grey50", alpha = 0.3, linewidth = 0.3) +
+
+    # Layer 2: Raincloud plot (half-violin)
+    ggdist::stat_slab(aes(fill = outcome_type), color = "black", side = "left",
+                         adjust = 0.5, width = 0.7,
+                         trim = FALSE, alpha = 0.6, linewidth = 0.4) +
+    
+    # Add the straight vertical line to close the violin
+    geom_segment(
+      data = violin_lines_data,
+      aes(x = x, xend = x, y = ymin, yend = ymax),
+      inherit.aes = FALSE,
+      color = "black",
+      linewidth = 0.4
+    ) +
+    
+    # Layer 3: Boxplot with fill, moved inside the violin
+    geom_boxplot(aes(fill = outcome_type), color = "black", width = 0.12, 
+                 outlier.shape = NA, linewidth = 0.5, alpha = 0.4,
+                 position = position_nudge(x = -0.2)) +
+    
+    # Layer 4: "Rain" using stat_dots for a swarm plot
+    ggdist::stat_dots(
+        aes(fill = outcome_type),
+        binwidth = 0.03,
+        side = "right",
+        layout = "swarm",
+        alpha = 0.5,
+        shape = 21,
+        color = "black",
+        dotsize = 0.3,
+        size = 0.5,
+        position = position_nudge(x = 0.1) 
+    ) +
+
+    # Layer 5: Overlay GLMM predictions
+    geom_line(data = wsls_glmm_preds, aes(x = x, y = predicted, group = 1),
+              color = "firebrick", linewidth = 1.2, alpha = 0.8) +
+    geom_errorbar(data = wsls_glmm_preds, aes(x = x, y = predicted, ymin = conf.low, ymax = conf.high),
+                  width = .1, color = "firebrick", linewidth = 1) +
+    geom_point(data = wsls_glmm_preds, aes(x = x, y = predicted),
+               shape = 23, size = 5, fill = "white", color = "firebrick", stroke = 1.2) +
+
+    # Add labels
+    labs(x = "Outcome on Previous Trial", y = "p(Stay)") +
+    
+    # Set colors and scales
+    scale_fill_manual(values = c("Loss" = "white", "Non-Salient Win" = "grey75", "Salient Win" = "#FFD700")) +
+    scale_y_continuous(labels = scales::percent, breaks=seq(0,1,0.2)) +
+    coord_cartesian(xlim = c(0.5, 3.5), ylim = c(0, 1), clip = "off") + 
+    
+    # Theming
+    theme_minimal(base_size = 14) + 
+    theme(
+      legend.position = "none",
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      axis.line = element_line(color="black"),
+      axis.ticks = element_line(color="black")
+    )
+
+ggsave(file.path(plots_dir, "win_lose_stay_probability.png"), plot = wsls_plot, width = 9, height = 6, bg="white", dpi=300)
+print(wsls_plot)
 
 # 2.2. Generalized Linear Mixed-Effects Models (GLMMs)
 print("Fitting GLMM for choice optimality...")
@@ -194,7 +298,7 @@ glmm_data <- task_data %>%
       TRUE ~ NA_character_
     ),
     # Dependent variables
-    optimal_choice = ifelse(reward_prob_1 > reward_prob_2, 0, 1) == choice
+    optimal_choice = as.factor(ifelse(reward_prob_1 > reward_prob_2, 0, 1) == choice)
   ) %>%
   ungroup() %>%
   filter(!is.na(prev_outcome)) %>%
@@ -212,6 +316,102 @@ broom.mixed::tidy(glmm_optimality, conf.int = TRUE, exponentiate = TRUE) %>%
     gt() %>%
     tab_header("GLMM Results: Predicting Choice Optimality") %>%
     gtsave(file.path(tables_dir, "glmm_optimality_results.png"))
+
+# Create and save plot for GLMM results
+print("Generating plot for optimality GLMM...")
+
+# 1. Calculate raw data summaries (for the raincloud)
+optimality_summary <- glmm_data %>%
+  group_by(subject_id, prev_outcome) %>%
+  summarise(prob_optimal = mean(optimal_choice == 'TRUE', na.rm = TRUE), .groups = "drop") %>%
+  mutate(prev_outcome = factor(prev_outcome, levels = c("Loss", "Non-Salient Win", "Salient Win")))
+
+# 2. Get model-predicted probabilities (for the overlay)
+glmm_preds <- ggeffects::ggpredict(glmm_optimality, terms = "prev_outcome") %>%
+  as_tibble() %>%
+  mutate(x = factor(x, levels = c("Loss", "Non-Salient Win", "Salient Win")))
+
+# --- Pre-calculate violin plot line data for optimality plot ---
+p_build_optimality <- ggplot_build(
+  ggplot(optimality_summary, aes(x = prev_outcome, y = prob_optimal)) +
+    ggdist::stat_slab(side = "left", adjust = 0.5, trim = FALSE)
+)
+violin_lines_data_optimality <- p_build_optimality$data[[1]] %>%
+  as_tibble() %>%
+  group_by(group) %>%
+  summarise(
+    x = first(x),
+    ymin = min(y),
+    ymax = max(y)
+  )
+
+# 3. Build the plot
+optimality_plot <- ggplot(optimality_summary, aes(x = prev_outcome, y = prob_optimal)) +
+    # Layer 1: Lines connecting individual subjects
+    # geom_line(aes(group = subject_id), color = "grey50", alpha = 0.3, linewidth = 0.3) +
+    
+    # Layer 2: Raincloud plot (half-violin)
+    ggdist::stat_slab(aes(fill = prev_outcome), color = "black", side = "left",
+                      adjust = 0.5, width = 0.7,
+                      trim = FALSE, alpha = 0.6, linewidth = 0.4) +
+    
+    # Add the straight vertical line to close the violin
+    geom_segment(
+      data = violin_lines_data_optimality,
+      aes(x = x, xend = x, y = ymin, yend = ymax),
+      inherit.aes = FALSE,
+      color = "black",
+      linewidth = 0.4
+    ) +
+    
+    # Layer 3: Boxplot with fill, moved inside the violin
+    geom_boxplot(aes(fill = prev_outcome), color = "black", width = 0.12, 
+                 outlier.shape = NA, linewidth = 0.5, alpha = 0.4,
+                 position = position_nudge(x = -0.2)) +
+    
+    # Layer 4: "Rain" using stat_dots for a swarm plot
+    ggdist::stat_dots(
+        aes(fill = prev_outcome),
+        binwidth = 0.03,
+        side = "right",
+        layout = "swarm",
+        alpha = 0.5,
+        shape = 21,
+        color = "black",
+        dotsize = 0.3,
+        size = 0.5,
+        position = position_nudge(x = 0.1) 
+    ) +
+
+    # Layer 5: Overlay model predictions (more prominent)
+    # Connecting line for GLMM predictions
+    geom_line(data = glmm_preds, aes(x = x, y = predicted, group = 1), 
+              color = "firebrick", linewidth = 1.2, alpha = 0.8) +
+    # Error bars for GLMM predictions
+    geom_errorbar(data = glmm_preds, aes(x = x, y = predicted, ymin = conf.low, ymax = conf.high),
+                  width = .1, color = "firebrick", linewidth = 1) +
+    # Diamond points for GLMM predictions
+    geom_point(data = glmm_preds, aes(x = x, y = predicted),
+               shape = 23, size = 5, fill = "white", color = "firebrick", stroke = 1.2) +
+
+    # Labels and scales
+    labs(x = "Outcome on Previous Trial", y = "p(Best Choice)") +
+    scale_fill_manual(values = c("Loss" = "white", "Non-Salient Win" = "grey75", "Salient Win" = "#FFD700")) +
+    scale_y_continuous(labels = scales::percent, breaks=seq(0,1,0.2)) +
+    coord_cartesian(xlim = c(0.5, 3.5), ylim = c(0, 1), clip = "off") + 
+    
+    # Theming
+    theme_minimal(base_size = 14) + 
+    theme(
+      legend.position = "none",
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      axis.line = element_line(color="black"),
+      axis.ticks = element_line(color="black")
+    )
+
+ggsave(file.path(plots_dir, "optimality_glmm_plot.png"), plot = optimality_plot, width = 9, height = 7, bg="white", dpi=300)
+print(optimality_plot)
 
 
 # --- 3. HIERARCHICAL BAYESIAN MODELING ---
