@@ -247,7 +247,7 @@ for (model_name in modelist) {
     file = modelfile_name,
     data = StanList,
     chains = nChains, iter = nIters, warmup = nWarmup,
-    control = list(adapt_delta = 0.98),
+    control = list(adapt_delta = 0.98, max_treedepth = 12),
     seed = 123
   )
 
