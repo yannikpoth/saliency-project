@@ -180,7 +180,7 @@ ggsave(file.path(plots_dir, "win_stay_probability.png"), plot = win_stay_plot, w
 print(win_stay_plot)
 
 # 2.2. Generalized Linear Mixed-Effects Models (GLMMs)
-print("Fitting GLMMs for choice optimality and switching...")
+print("Fitting GLMM for choice optimality...")
 
 glmm_data <- task_data %>%
   arrange(subject_id, trial) %>%
@@ -194,32 +194,24 @@ glmm_data <- task_data %>%
       TRUE ~ NA_character_
     ),
     # Dependent variables
-    optimal_choice = ifelse(reward_prob_1 > reward_prob_2, 0, 1) == choice,
-    switched = choice != lag(choice)
+    optimal_choice = ifelse(reward_prob_1 > reward_prob_2, 0, 1) == choice
   ) %>%
   ungroup() %>%
-  filter(!is.na(prev_outcome))
+  filter(!is.na(prev_outcome)) %>%
+  # Fix: Scale the trial variable for numerical stability
+  mutate(trial_scaled = as.numeric(scale(trial)))
+
 
 # Model 1: Choice Optimality
-glmm_optimality <- glmer(optimal_choice ~ prev_outcome + trial + (1 | subject_id),
+glmm_optimality <- glmer(optimal_choice ~ prev_outcome + trial_scaled + (1 | subject_id),
                          data = glmm_data, family = binomial,
                          control = glmerControl(optimizer = "bobyqa"))
-
-# Model 2: Switching Behavior
-glmm_switching <- glmer(switched ~ prev_outcome + trial + (1 | subject_id),
-                        data = glmm_data, family = binomial,
-                        control = glmerControl(optimizer = "bobyqa"))
 
 # Create and save results tables
 broom.mixed::tidy(glmm_optimality, conf.int = TRUE, exponentiate = TRUE) %>%
     gt() %>%
     tab_header("GLMM Results: Predicting Choice Optimality") %>%
     gtsave(file.path(tables_dir, "glmm_optimality_results.png"))
-
-broom.mixed::tidy(glmm_switching, conf.int = TRUE, exponentiate = TRUE) %>%
-    gt() %>%
-    tab_header("GLMM Results: Predicting Choice Switching") %>%
-    gtsave(file.path(tables_dir, "glmm_switching_results.png"))
 
 
 # --- 3. HIERARCHICAL BAYESIAN MODELING ---
