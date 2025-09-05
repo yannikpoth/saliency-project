@@ -1,0 +1,3 @@
+* text=auto
+*.R linguist-language=R
+*.stan linguist-language=Stan

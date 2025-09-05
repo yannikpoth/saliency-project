@@ -1,0 +1,11 @@
+# Placeholder for the project
+# TODO: Update the title, message, and date-released
+cff-version: 1.2.0
+title: "Illuminating Decisions: Salient Reward-Paired Cues"
+message: "If you use this code, please cite it as:"
+authors:
+  - family-names: Poth
+    given-names: Yannik
+license: MIT
+version: 0.1.0
+date-released: 2025-09-04

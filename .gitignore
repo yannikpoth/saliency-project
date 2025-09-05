@@ -1,0 +1,28 @@
+# OS / IDE
+.DS_Store
+.cursor/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+env/
+venv/
+
+# R
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+renv/library/
+.Renv
+
+# Outputs (keep the folders, ignore contents)
+analysis/outputs/*
+!analysis/outputs/figs/.gitkeep
+!analysis/outputs/tables/.gitkeep
+
+# Data (keep the folders, ignore contents)
+data/*
+!data/raw/README_data.md
+!data/processed/.gitkeep

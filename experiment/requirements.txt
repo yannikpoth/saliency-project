@@ -1,0 +1,5 @@
+# Placeholder for the experiment requirements
+# TODO: Update the requirements
+
+psychopy>=2023.2
+pandas>=2.2.3
