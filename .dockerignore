@@ -1,0 +1,12 @@
+.git
+.gitignore
+.github
+data/*
+analysis/outputs/*
+docker/*
+!docker/Dockerfile
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+renv/library/

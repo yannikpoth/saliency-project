@@ -1,43 +1,48 @@
-# analysis/setup.R — robust, non-interactive setup
+# 0) remember & switch working dir safely
+.opwd <- getwd()
+if (basename(.opwd) != "analysis" && dir.exists("analysis")) setwd("analysis")
+on.exit(setwd(.opwd), add = TRUE)
 
-# 0) Force a valid CRAN mirror for both base R and renv
-# Why: Non-interactive sessions sometimes have repos set to "@CRAN@" (unset).
-# We set CRAN explicitly and also tell renv to use it via an env override.
-set_cran_repo <- function() {
-  cran <- getOption("repos")
-  # Normalize to a named vector with CRAN url
-  if (is.null(cran) || isTRUE(is.na(cran["CRAN"])) || identical(cran["CRAN"], "@CRAN@") || identical(cran["CRAN"], "")) {
-    cran <- c(CRAN = "https://cloud.r-project.org")
-  } else if (is.null(names(cran)) || is.na(match("CRAN", names(cran)))) {
-    # If it's an unnamed vector, give it the CRAN name
-    cran <- c(CRAN = cran[[1]])
-  }
-  options(repos = cran)
-  # Tell renv to always use this mirror when resolving packages
-  Sys.setenv(RENV_CONFIG_REPOS_OVERRIDE = unname(cran["CRAN"]))
-  invisible(cran)
-}
-cran <- set_cran_repo()
+# 1) pure-CRAN installs, no system package manager
+Sys.setenv(R_BSPM_DISABLE = "true")
 
-# 1) Ensure renv is present (install from the CRAN we just set)
-if (!requireNamespace("renv", quietly = TRUE)) {
-  install.packages("renv", repos = c(CRAN = unname(cran["CRAN"])))
-}
+# 2) renv: no global cache (avoid broken symlink warnings in containers)
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+if (!requireNamespace("renv", quietly = TRUE)) install.packages("renv", type = "source")
+library(renv)
 renv::consent(provided = TRUE)
+renv::settings$use.cache(FALSE, persist = TRUE)
 
-# 2) Create/refresh the lockfile on first run, then restore packages
-# Why: renv::restore() installs exactly what lockfile specifies; consistent for everyone.
-if (!file.exists("renv.lock")) renv::snapshot(prompt = FALSE)
-renv::restore(prompt = FALSE)
+has_lock <- file.exists("renv.lock")
 
-# 3) Ensure cmdstanr from Stan repo + CRAN
-# Why: cmdstanr is hosted on mc-stan; provide BOTH repos explicitly to avoid "@CRAN@" issues.
-if (!requireNamespace("cmdstanr", quietly = TRUE)) {
-  install.packages("cmdstanr", repos = c("https://mc-stan.org/r-packages/", unname(cran["CRAN"])))
+if (has_lock) {
+  renv::restore(prompt = FALSE)
+} else {
+  renv::init(bare = TRUE)
+
+  base_pkgs <- c("tibble", "dplyr", "readr")
+  to_install <- base_pkgs[!base_pkgs %in% rownames(installed.packages())]
+  if (length(to_install)) install.packages(to_install)
+
+  # cmdstanr (Stan interface)
+  if (!requireNamespace("cmdstanr", quietly = TRUE)) {
+    install.packages("cmdstanr",
+      repos = c("https://mc-stan.org/r-packages/", getOption("repos"))
+    )
+  }
 }
 
-# 4) Toolchain and CmdStan binaries (first run compiles toolchain; macOS needs Xcode CLT)
-cmdstanr::check_cmdstan_toolchain(fix = TRUE, quiet = TRUE)
-if (!cmdstanr::cmdstan_version(TRUE)) cmdstanr::install_cmdstan(quiet = TRUE)
+# 3) Toolchain + CmdStan (limit to 1 core; set MAKEFLAGS to be safe)
+if (requireNamespace("cmdstanr", quietly = TRUE)) {
+  Sys.setenv(MAKEFLAGS = "-j1")  # avoid OOM during build
+  cmdstanr::check_cmdstan_toolchain(fix = TRUE, quiet = TRUE)
+  ver <- tryCatch(cmdstanr::cmdstan_version(), error = function(e) NA)
+  if (is.na(ver)) {
+    cmdstanr::install_cmdstan(quiet = TRUE, cores = 1)
+  }
+}
 
-message("Setup complete.")
+# 4) Lock current state (creates/updates renv.lock)
+renv::snapshot(prompt = FALSE)
+
+message("Setup complete. renv is active; lockfile present: ", file.exists("renv.lock"))

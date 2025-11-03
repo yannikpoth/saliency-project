@@ -22,7 +22,12 @@ analysis/outputs/*
 !analysis/outputs/figs/.gitkeep
 !analysis/outputs/tables/.gitkeep
 
-# Data (keep the folders, ignore contents)
-data/*
+# === Data rules (ignore heavy data; keep placeholders) ===
+# Ignore everything under raw/ except the readme and .gitkeep
+data/raw/**
+!data/raw/.gitkeep
 !data/raw/README_data.md
+
+# Ignore generated processed data; keep folder marker
+data/processed/**
 !data/processed/.gitkeep

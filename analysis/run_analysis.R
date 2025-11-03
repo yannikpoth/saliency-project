@@ -1,3 +1,5 @@
+# Figure out whether we're in repo root or analysis/
+.prefix <- if (dir.exists(file.path("analysis", "R"))) "analysis/" else ""
 source("analysis/R/io.R")
 source("analysis/R/preprocess.R")
 source("analysis/R/rl_models.R")
