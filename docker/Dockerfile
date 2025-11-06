@@ -18,10 +18,15 @@ pandoc \
 make \
 g++ \
 wget \
+python3 \
+python3-pip \
 && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Install renv as root (into system libraries for all users)
 RUN R -e "install.packages('renv', version = '1.1.5', repos = 'https://cloud.r-project.org')"
+
+# Install pre-commit for git hooks
+RUN pip3 install --no-cache-dir pre-commit
 
 # Set working directory (files will be mounted here at runtime)
 WORKDIR /workspace
