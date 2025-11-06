@@ -1,0 +1,27 @@
+{
+  "name": "Saliency Project R Dev",
+  "build": {
+    "dockerfile": "../docker/Dockerfile"  // Points to your Dockerfile
+  },
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "features": {
+    // Optional: Add if you need Python later
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.10"
+    }
+  },
+  "runArgs": [
+    "--memory=8g",  // Allocates 8GB RAM (critical for CmdStan compilation and model fitting)
+    "--cpus=4"     // Allocates 4 CPUs (for parallel Stan chains and faster compilation) - add back if host has enough cores
+  ],
+  "postCreateCommand": "R -e 'renv::restore()' && R -e 'renv::repair()' && R -e 'library(cmdstanr); install_cmdstan(version = \"2.37.0\", cpp_options = list(MAKEFLAGS = \"-j1\"))' && R -e 'library(cmdstanr); check_cmdstan_toolchain()'",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "REditorSupport.r",             // R extension for syntax/run support inside container
+        "ms-vscode-remote.remote-containers"  // Ensures Dev Containers tools are available
+      ]
+    }
+  }
+}
