@@ -7,14 +7,14 @@ source("analysis/R/behavior_metrics.R")
 source("analysis/R/viz.R")
 
 io_init()
-df_raw  <- io_read_raw("data/raw")
-df_proc <- preprocess(df_raw)
+data_raw  <- io_read_raw("data/raw")
+data_proc <- preprocess(data_raw)
 
 # (placeholder) Fit models later
 # fit <- rl_fit_hierarchical(df_proc, "analysis/models/rl_hierarchical_shift.stan")
 
-metrics <- compute_behavior_metrics(df_proc)
-viz_all(NULL, metrics)
-io_write_results(NULL, metrics)
+# metrics <- compute_behavior_metrics(df_proc)
+# viz_all(NULL, metrics)
+# io_write_results(NULL, metrics)
 
 message("Analysis pipeline (stub) finished.")

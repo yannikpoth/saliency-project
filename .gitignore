@@ -31,3 +31,6 @@ data/raw/**
 # Ignore generated processed data; keep folder marker
 data/processed/**
 !data/processed/.gitkeep
+
+# Legacy files
+legacy/*

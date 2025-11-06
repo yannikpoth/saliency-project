@@ -18,7 +18,7 @@ io_read_raw <- function(path = "data/raw") {
 
   # Read task data (no participant_id column, so no col_types for it; add from filename)
   read_task <- function(f) {
-    participant_id <- sub(".*(\\d+)_task_data\\.csv$", "\\1", basename(f))  # Extract ID from filename (e.g., "01")
+    participant_id <- sub("^(\\d+)_task_data\\.csv$", "\\1", basename(f))  # Extract ID from filename (e.g., "01", "10", "44")
     df <- readr::read_csv(f, show_col_types = FALSE)
     df$participant_id <- as.character(participant_id)  # Add as character column
     df
@@ -34,6 +34,7 @@ io_read_raw <- function(path = "data/raw") {
   list(task = task_data, questionnaire = quest_data)
 }
 
+# Placeholder function for writing results later
 io_write_results <- function(summaries, metrics) {
   readr::write_csv(metrics, "analysis/outputs/tables/metrics_stub.csv")
 }

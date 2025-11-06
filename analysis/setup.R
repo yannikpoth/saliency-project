@@ -1,48 +1,39 @@
-# 0) remember & switch working dir safely
-.opwd <- getwd()
-if (basename(.opwd) != "analysis" && dir.exists("analysis")) setwd("analysis")
-on.exit(setwd(.opwd), add = TRUE)
+# setup.R - Environment setup for non-Docker users
+# Docker users: This file is not needed; the container handles setup automatically
 
-# 1) pure-CRAN installs, no system package manager
-Sys.setenv(R_BSPM_DISABLE = "true")
-
-# 2) renv: no global cache (avoid broken symlink warnings in containers)
-options(repos = c(CRAN = "https://cloud.r-project.org"))
-if (!requireNamespace("renv", quietly = TRUE)) install.packages("renv", type = "source")
-library(renv)
-renv::consent(provided = TRUE)
-renv::settings$use.cache(FALSE, persist = TRUE)
-
-has_lock <- file.exists("renv.lock")
-
-if (has_lock) {
-  renv::restore(prompt = FALSE)
-} else {
-  renv::init(bare = TRUE)
-
-  base_pkgs <- c("tibble", "dplyr", "readr")
-  to_install <- base_pkgs[!base_pkgs %in% rownames(installed.packages())]
-  if (length(to_install)) install.packages(to_install)
-
-  # cmdstanr (Stan interface)
-  if (!requireNamespace("cmdstanr", quietly = TRUE)) {
-    install.packages("cmdstanr",
-      repos = c("https://mc-stan.org/r-packages/", getOption("repos"))
-    )
-  }
+# Ensure we're in project root
+if (!file.exists("renv.lock")) {
+  stop("renv.lock not found. Please run this script from the project root directory.")
 }
 
-# 3) Toolchain + CmdStan (limit to 1 core; set MAKEFLAGS to be safe)
+message("Setting up R environment...")
+
+# 1. Restore R packages from lockfile
+if (!requireNamespace("renv", quietly = TRUE)) {
+  message("Installing renv...")
+  install.packages("renv")
+}
+
+message("Restoring R packages from renv.lock (this may take a few minutes)...")
+renv::restore(prompt = FALSE)
+message("✓ R packages restored")
+
+# 2. Check CmdStan installation
 if (requireNamespace("cmdstanr", quietly = TRUE)) {
-  Sys.setenv(MAKEFLAGS = "-j1")  # avoid OOM during build
-  cmdstanr::check_cmdstan_toolchain(fix = TRUE, quiet = TRUE)
-  ver <- tryCatch(cmdstanr::cmdstan_version(), error = function(e) NA)
-  if (is.na(ver)) {
-    cmdstanr::install_cmdstan(quiet = TRUE, cores = 1)
-  }
+  tryCatch({
+    cmdstanr::check_cmdstan_toolchain(fix = FALSE, quiet = TRUE)
+    version <- cmdstanr::cmdstan_version()
+    message(paste0("✓ CmdStan found (version ", version, ")"))
+  }, error = function(e) {
+    message("⚠ CmdStan not found or not working properly.")
+    message("  Install with: cmdstanr::install_cmdstan(version = '2.37.0')")
+    message("  See: https://mc-stan.org/cmdstanr/articles/cmdstanr.html")
+  })
+} else {
+  message("⚠ cmdstanr package not found after restore. Check renv.lock integrity.")
 }
 
-# 4) Lock current state (creates/updates renv.lock)
-renv::snapshot(prompt = FALSE)
-
-message("Setup complete. renv is active; lockfile present: ", file.exists("renv.lock"))
+message("\n✓ Setup complete!")
+message("Next steps:")
+message("  - Run analysis: Rscript analysis/run_analysis.R")
+message("  - Or use Make: make analysis")
