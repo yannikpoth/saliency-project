@@ -12,10 +12,10 @@
     }
   },
   "runArgs": [
-    "--memory=8g",  // Allocates 8GB RAM (critical for CmdStan compilation and model fitting)
-    "--cpus=4"     // Allocates 4 CPUs (for parallel Stan chains and faster compilation) - add back if host has enough cores
+    "--memory=8g",  // Allocates 8GB RAM (recommended for Stan model fitting)
+    "--cpus=4"     // Allocates 4 CPUs (for parallel MCMC chains)
   ],
-  "postCreateCommand": "R -e 'renv::restore()' && R -e 'renv::repair()' && R -e 'library(cmdstanr); install_cmdstan(version = \"2.37.0\", cpp_options = list(MAKEFLAGS = \"-j1\"))' && R -e 'library(cmdstanr); check_cmdstan_toolchain()'",
+  "postCreateCommand": "R -e 'renv::restore()' && R -e 'renv::repair()'",
   "customizations": {
     "vscode": {
       "extensions": [

@@ -16,6 +16,8 @@ venv/
 .Ruserdata
 renv/library/
 .Renv
+renv/
+*.rds
 
 # Outputs (keep the folders, ignore contents)
 analysis/outputs/*
