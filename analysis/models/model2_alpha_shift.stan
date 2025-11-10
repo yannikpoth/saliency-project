@@ -1,20 +1,17 @@
-/*      Reinforcement learning model: Alpha Shift - UNIFORM PRIORS VERSION
-Last edit:  2025/05/09
+/*      Reinforcement learning model: Model 2 - Alpha Shift Only
+Last edit:  2025/11/07
 Authors:    Poth, Yannik (YP)
             Geysen, Steven (SG)
-Notes:      - Based on rl_cp_shift_normal.stan.
-            - Implements prior changes based on professor Jan Peter's feedback (2025/04/23 & 2025/05/09):
-                - Group-level SDs (alpha_sd_raw, alpha_shift_sd_raw, beta_sd_raw): uniform(0.001, 3)
-                - Group-level alpha_mu_raw: uniform(-4, 4)
-                - Group-level beta_mu_raw: uniform(-4, 4)
-                - Group-level alpha_shift_mu_raw: remains normal(0, 1)
-            - Includes alpha_shift parameter modulated by salient feedback.
-            - Alpha (base + shift) is transformed via Phi within the trial loop.
-            - Hierarchical structure with Centered Parameterization (CP).
-            - Interpretable alpha shift values (actual change on 0-1 learning rate scale)
-              are calculated in the generated quantities block.
-To do:      - Test and validate.
-Comments:   - Model to test hypothesis about salient feedback modulating learning rate.
+Notes:      - Factorial design model 2/6: Alpha shift only
+            - Parameters: alpha, beta, alpha_shift
+            - Updated priors per professor's specifications:
+                - alpha_mu_raw, beta_mu_raw: uniform(-3, 3)
+                - All SDs: uniform(0.0001, 10)
+                - alpha_shift_mu_raw: normal(0, 1)
+            - Transforms alpha and beta via Phi
+            - Hierarchical structure with Centered Parameterization (CP)
+To do:      - Test and validate
+Comments:   - Tests hypothesis about salient feedback modulating learning rate
 Sources:    Internal project files, Stan documentation, Professor's feedback
 */
 
@@ -51,7 +48,6 @@ parameters {
 
 transformed parameters {
   // --- Transformed Subject-level Parameters (for use in the model) ---
-  // Beta is transformed here. Alpha and Alpha Shift are used raw and then Phi-transformed in model block.
   vector<lower=0, upper=10>[nSubs] beta_subj_transformed; // Scaled beta
 
   for (subi in 1:nSubs) {
@@ -62,14 +58,14 @@ transformed parameters {
 model {
   // --- Priors ---
   // Group-level Means (on the raw, unbounded scale)
-  alpha_mu_raw ~ uniform(-4, 4);       // Uniform prior for base alpha mean (raw)
-  alpha_shift_mu_raw ~ normal(0, 1);   // Retained normal prior for alpha shift mean (raw)
-  beta_mu_raw  ~ uniform(-4, 4);       // Uniform prior for beta mean (raw)
+  alpha_mu_raw ~ uniform(-3, 3);       // Updated uniform prior
+  alpha_shift_mu_raw ~ normal(0, 1);   // Normal prior for alpha shift mean (raw)
+  beta_mu_raw  ~ uniform(-3, 3);       // Updated uniform prior
 
   // Group-level Standard Deviations (on the raw, unbounded scale, constrained positive)
-  alpha_sd_raw ~ uniform(0.001, 3);       // Uniform prior (per prof. feedback)
-  alpha_shift_sd_raw ~ uniform(0.001, 3); // Uniform prior (per prof. feedback)
-  beta_sd_raw  ~ uniform(0.001, 3);       // Uniform prior (per prof. feedback)
+  alpha_sd_raw ~ uniform(0.0001, 10);       // Updated uniform prior
+  alpha_shift_sd_raw ~ uniform(0.0001, 10); // Updated uniform prior
+  beta_sd_raw  ~ uniform(0.0001, 10);       // Updated uniform prior
 
   // Subject-level Raw Parameters (Centered Parameterization)
   alpha_subj_raw ~ normal(alpha_mu_raw, alpha_sd_raw);
@@ -78,7 +74,7 @@ model {
 
   // --- Likelihood Calculation ---
   for (subi in 1:nSubs) {
-    real current_beta_subj  = beta_subj_transformed[subi]; // Use pre-transformed beta
+    real current_beta_subj  = beta_subj_transformed[subi];
 
     // Initialize Q-values for this subject
     vector[2] qval = rep_vector(0.5, 2); // Q-values for two options
@@ -114,37 +110,32 @@ model {
 
 generated quantities {
   // --- Transformed Group-level Parameters (for interpretation) ---
-  real<lower=0, upper=1> alpha_mu = Phi(alpha_mu_raw);       // Transformed base learning rate mean
-  real alpha_shift_mu_raw_gq = alpha_shift_mu_raw;           // Raw alpha shift mean (group level)
-  real<lower=0, upper=10> beta_mu  = Phi(beta_mu_raw) * 10.0; // Scaled beta mean
+  real<lower=0, upper=1> alpha_mu = Phi(alpha_mu_raw);
+  real alpha_shift_mu_raw_gq = alpha_shift_mu_raw;
+  real<lower=0, upper=10> beta_mu  = Phi(beta_mu_raw) * 10.0;
 
   // --- Transformed/Raw Subject-level Parameters (for interpretation) ---
-  vector<lower=0, upper=1>[nSubs] alpha;          // Transformed base learning rate per subject (non-salient feedback)
-  vector[nSubs] alpha_shift_subj_raw_gq;          // Raw alpha shift per subject
-  vector<lower=0, upper=10>[nSubs] beta;          // Scaled beta per subject
+  vector<lower=0, upper=1>[nSubs] alpha;
+  vector[nSubs] alpha_shift_subj_raw_gq;
+  vector<lower=0, upper=10>[nSubs] beta;
 
-  // --- New: Interpretable Alpha Shift Parameters ---
-  // Subject-level
-  vector<lower=0, upper=1>[nSubs] alpha_learning_rate_salient_subj; // Subject's learning rate (0-1 scale) with salient feedback
-  vector[nSubs] interpretable_alpha_shift_subj;       // Subject's interpretable shift (difference on 0-1 scale due to salience)
-
-  // Group-level (derived from mean raw parameters)
-  real<lower=0, upper=1> alpha_learning_rate_salient_mu;    // Group mean learning rate (0-1 scale) with salient feedback
-  real interpretable_alpha_shift_mu;              // Group mean interpretable shift (difference on 0-1 scale due to salience)
+  // --- Interpretable Alpha Shift Parameters ---
+  vector<lower=0, upper=1>[nSubs] alpha_learning_rate_salient_subj;
+  vector[nSubs] interpretable_alpha_shift_subj;
+  real<lower=0, upper=1> alpha_learning_rate_salient_mu;
+  real interpretable_alpha_shift_mu;
 
   for (subi in 1:nSubs) {
     alpha[subi] = Phi(alpha_subj_raw[subi]);
-    alpha_shift_subj_raw_gq[subi] = alpha_shift_subj_raw[subi]; // Storing the raw shift for clarity
+    alpha_shift_subj_raw_gq[subi] = alpha_shift_subj_raw[subi];
     beta[subi]  = beta_subj_transformed[subi];
 
-    // Calculate interpretable shift components for each subject
+    // Calculate interpretable shift components
     alpha_learning_rate_salient_subj[subi] = Phi(alpha_subj_raw[subi] + alpha_shift_subj_raw_gq[subi]);
     interpretable_alpha_shift_subj[subi] = alpha_learning_rate_salient_subj[subi] - alpha[subi];
   }
 
-  // Calculate interpretable shift components at the group level using mean raw parameters
-  // alpha_mu is already Phi(alpha_mu_raw)
-  // alpha_shift_mu_raw_gq is alpha_shift_mu_raw
+  // Group level interpretable shift
   alpha_learning_rate_salient_mu = Phi(alpha_mu_raw + alpha_shift_mu_raw_gq);
   interpretable_alpha_shift_mu = alpha_learning_rate_salient_mu - alpha_mu;
 
@@ -160,7 +151,7 @@ generated quantities {
     real pe_gq;
     log_lik[subi] = 0;
 
-    real current_beta_s_gq  = beta[subi]; // Uses subject's transformed beta from above
+    real current_beta_s_gq  = beta[subi];
 
     for (triali in 1:subTrials[subi]) {
       predicted_choices[subi, triali] = -9;
@@ -171,7 +162,7 @@ generated quantities {
         int observed_reward_val = reward[subi, triali];
         int gq_salient_feedback = salient_feedback[subi, triali];
 
-        // Calculate effective raw alpha for GQ (same logic as model block)
+        // Calculate effective raw alpha for GQ
         real gq_effective_raw_alpha;
         if (gq_salient_feedback == 1) {
           gq_effective_raw_alpha = alpha_subj_raw[subi] + alpha_shift_subj_raw_gq[subi];
@@ -180,6 +171,7 @@ generated quantities {
         }
         real gq_trial_alpha_transformed = Phi(gq_effective_raw_alpha);
 
+        // --- Calculate Choice Probabilities and Log Likelihood ---
         vector[2] gq_raw_log_probs = current_beta_s_gq * qval_gq;
         vector[2] gq_choice_probs  = softmax(gq_raw_log_probs);
 
@@ -187,6 +179,7 @@ generated quantities {
         log_lik[subi] += categorical_logit_lpmf(observed_choice_idx | gq_raw_log_probs);
         predicted_choices[subi, triali] = categorical_logit_rng(gq_raw_log_probs);
 
+        // --- Update Q-values ---
         pe_gq = observed_reward_val - qval_gq[observed_choice_idx];
         qval_gq[observed_choice_idx] = qval_gq[observed_choice_idx] + gq_trial_alpha_transformed * pe_gq;
       }

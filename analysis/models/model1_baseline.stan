@@ -1,16 +1,16 @@
-/*      Reinforcement learning model: Basic - UNIFORM PRIORS VERSION
-Last edit:  2025/05/09
+/*      Reinforcement learning model: Model 1 - Baseline
+Last edit:  2025/11/07
 Authors:    Poth, Yannik (YP)
             Geysen, Steven (SG)
-Notes:      - Based on rl_cp_basic_final.stan.
-            - Implements prior changes based on professor Jan Peter's feedback (2025/04/23 & 2025/05/09):
-                - Group-level SDs (alpha_sd_raw, beta_sd_raw): uniform(0.001, 3)
-                - Group-level alpha_mu_raw: uniform(-4, 4)
-                - Group-level beta_mu_raw: uniform(-4, 4)
-            - Transforms alpha and beta via Phi to [0,1] then scales beta.
-            - Hierarchical structure with Centered Parameterization (CP).
-To do:      - Test and validate.
-Comments:   - Intended as a robust baseline RL model with uniform priors.
+Notes:      - Factorial design model 1/6: Baseline model
+            - Parameters: alpha, beta only
+            - Updated priors per professor's specifications:
+                - alpha_mu_raw, beta_mu_raw: uniform(-3, 3)
+                - All SDs: uniform(0.0001, 10)
+            - Transforms alpha and beta via Phi
+            - Hierarchical structure with Centered Parameterization (CP)
+To do:      - Test and validate
+Comments:   - Baseline model for factorial comparison
 Sources:    Internal project files, Stan documentation, Professor's feedback
 */
 
@@ -52,12 +52,12 @@ transformed parameters {
 model {
   // --- Priors ---
   // Group-level Means (on the raw, unbounded scale)
-  alpha_mu_raw ~ uniform(-4, 4);   // Uniform prior
-  beta_mu_raw  ~ uniform(-4, 4);   // Uniform prior
+  alpha_mu_raw ~ uniform(-3, 3);   // Updated uniform prior
+  beta_mu_raw  ~ uniform(-3, 3);   // Updated uniform prior
 
   // Group-level Standard Deviations (on the raw, unbounded scale, constrained positive)
-  alpha_sd_raw ~ uniform(0.001, 3); // Uniform prior (per prof. feedback)
-  beta_sd_raw  ~ uniform(0.001, 3); // Uniform prior (per prof. feedback)
+  alpha_sd_raw ~ uniform(0.0001, 10); // Updated uniform prior
+  beta_sd_raw  ~ uniform(0.0001, 10); // Updated uniform prior
 
   // Subject-level Raw Parameters (Centered Parameterization)
   alpha_subj_raw ~ normal(alpha_mu_raw, alpha_sd_raw);
@@ -101,8 +101,6 @@ generated quantities {
   real<lower=0, upper=10> beta_mu  = Phi(beta_mu_raw) * 10.0; // Scaled to [0, 10]
 
   // --- Transformed Subject-level Parameters (for interpretation) ---
-  // These are identical to alpha_subj_transformed and beta_subj_transformed
-  // but are re-declared here for explicit output if desired.
   vector<lower=0, upper=1>[nSubs] alpha;
   vector<lower=0, upper=10>[nSubs] beta; // Scaled to [0, 10]
   for (subi in 1:nSubs) {

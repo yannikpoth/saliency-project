@@ -1,15 +1,19 @@
-/*      Reinforcement learning model: Alpha Shift - NORMAL PRIORS / NCP VERSION
-Last edit:  2024/07/25
-Authors:    Poth, Yannik (YP); Gemini
-Notes:      - Simpler version of rl_ncp_shift_perserv_normal.stan.
-            - This version REMOVES the perseveration parameter (kappa) to test if the
-              more complex model was overparameterized.
-            - Implements a Non-Centered Parameterization (NCP).
-            - Uses weakly informative normal priors.
-To do:      - Compare this model's convergence and LOOIC against the perseveration version.
-Comments:   - This model tests the core hypothesis about alpha_shift without the confounding
-              influence of a perseveration parameter. It is a critical step in model comparison.
-Sources:    Internal project files, Stan documentation, Stan community recommendations
+/*      Reinforcement learning model: Model 4 - Alpha Shift + Kappa
+Last edit:  2025/11/07
+Authors:    Poth, Yannik (YP)
+            Geysen, Steven (SG)
+Notes:      - Factorial design model 4/6: Alpha shift + Kappa
+            - Parameters: alpha, beta, alpha_shift, kappa
+            - Updated priors per professor's specifications:
+                - alpha_mu_raw, beta_mu_raw: uniform(-3, 3)
+                - All SDs: uniform(0.0001, 10)
+                - alpha_shift_mu_raw: normal(0, 1)
+                - kappa_mu_raw: normal(0, 1)
+            - Kappa is Phi-transformed to [0, 1] scale
+            - Hierarchical structure with Centered Parameterization (CP)
+To do:      - Test and validate
+Comments:   - Tests both learning rate modulation and perseveration (no interaction)
+Sources:    Internal project files, Stan documentation, Professor's feedback
 */
 
 data {
@@ -32,58 +36,60 @@ parameters {
   real alpha_mu_raw;          // Mean for base learning rate (raw)
   real alpha_shift_mu_raw;    // Mean for learning rate shift (raw)
   real beta_mu_raw;           // Mean for inverse temperature (raw)
+  real kappa_mu_raw;          // Mean for perseveration strength (raw)
 
   real<lower=0> alpha_sd_raw;       // SD for base learning rate (raw)
   real<lower=0> alpha_shift_sd_raw; // SD for learning rate shift (raw)
   real<lower=0> beta_sd_raw;        // SD for inverse temperature (raw)
+  real<lower=0> kappa_sd_raw;       // SD for perseveration strength (raw)
 
-  // --- Subject-level Standardized Offsets (for NCP) ---
-  vector[nSubs] alpha_subj_z;         // Subject-specific base learning rate offsets (z-scored)
-  vector[nSubs] alpha_shift_subj_z;   // Subject-specific learning rate shift offsets (z-scored)
-  vector[nSubs] beta_subj_z;          // Subject-specific inverse temperature offsets (z-scored)
+  // --- Subject-level Raw Parameters ---
+  vector[nSubs] alpha_subj_raw;         // Subject-specific base learning rates (raw)
+  vector[nSubs] alpha_shift_subj_raw;   // Subject-specific learning rate shifts (raw)
+  vector[nSubs] beta_subj_raw;          // Subject-specific inverse temperatures (raw)
+  vector[nSubs] kappa_subj_raw;         // Subject-specific perseveration strengths (raw)
 }
 
 transformed parameters {
-  // --- Transformed Subject-level Parameters (derived via NCP for use in the model) ---
-  vector[nSubs] alpha_subj_raw;
-  vector[nSubs] alpha_shift_subj_raw;
-  vector[nSubs] beta_subj_raw;
-  vector<lower=0, upper=10>[nSubs] beta_subj_transformed; // Scaled beta
-
-  // NCP: Scale standardized offsets by group-level parameters
-  alpha_subj_raw = alpha_mu_raw + alpha_subj_z * alpha_sd_raw;
-  alpha_shift_subj_raw = alpha_shift_mu_raw + alpha_shift_subj_z * alpha_shift_sd_raw;
-  beta_subj_raw = beta_mu_raw + beta_subj_z * beta_sd_raw;
+  // --- Transformed Subject-level Parameters (for use in the model) ---
+  vector<lower=0, upper=10>[nSubs] beta_subj_transformed;  // Scaled beta
+  vector<lower=0, upper=1>[nSubs] kappa_subj_transformed; // Transformed kappa
 
   for (subi in 1:nSubs) {
     beta_subj_transformed[subi]  = Phi(beta_subj_raw[subi]) * 10.0; // Scale beta to [0, 10]
+    kappa_subj_transformed[subi] = Phi(kappa_subj_raw[subi]);       // Transform kappa to [0, 1]
   }
 }
 
 model {
   // --- Priors ---
-  // Group-level Means (on the raw, unbounded scale) - Weakly Informative
-  alpha_mu_raw ~ normal(0, 1.5);
-  alpha_shift_mu_raw ~ normal(0, 1);
-  beta_mu_raw  ~ normal(0, 1.5);
+  // Group-level Means (on the raw, unbounded scale)
+  alpha_mu_raw ~ uniform(-3, 3);       // Updated uniform prior
+  alpha_shift_mu_raw ~ normal(0, 1);   // Normal prior for alpha shift mean (raw)
+  beta_mu_raw  ~ uniform(-3, 3);       // Updated uniform prior
+  kappa_mu_raw ~ normal(0, 1);         // Normal prior for perseveration mean (raw)
 
-  // Group-level Standard Deviations (on the raw, unbounded scale, constrained positive) - Weakly Informative
-  alpha_sd_raw ~ normal(0, 1);
-  alpha_shift_sd_raw ~ normal(0, 1);
-  beta_sd_raw  ~ normal(0, 1);
+  // Group-level Standard Deviations (on the raw, unbounded scale, constrained positive)
+  alpha_sd_raw ~ uniform(0.0001, 10);       // Updated uniform prior
+  alpha_shift_sd_raw ~ uniform(0.0001, 10); // Updated uniform prior
+  beta_sd_raw  ~ uniform(0.0001, 10);       // Updated uniform prior
+  kappa_sd_raw ~ uniform(0.0001, 10);       // Updated uniform prior
 
-  // Subject-level Standardized Offsets (Non-Centered Parameterization)
-  alpha_subj_z ~ std_normal();
-  alpha_shift_subj_z ~ std_normal();
-  beta_subj_z ~ std_normal();
+  // Subject-level Raw Parameters (Centered Parameterization)
+  alpha_subj_raw ~ normal(alpha_mu_raw, alpha_sd_raw);
+  alpha_shift_subj_raw ~ normal(alpha_shift_mu_raw, alpha_shift_sd_raw);
+  beta_subj_raw  ~ normal(beta_mu_raw, beta_sd_raw);
+  kappa_subj_raw ~ normal(kappa_mu_raw, kappa_sd_raw);
 
   // --- Likelihood Calculation ---
   for (subi in 1:nSubs) {
-    real current_beta_subj  = beta_subj_transformed[subi]; // Use pre-transformed beta
+    real current_beta_subj  = beta_subj_transformed[subi];
+    real current_kappa_subj = kappa_subj_transformed[subi];
 
     // Initialize Q-values for this subject
     vector[2] qval = rep_vector(0.5, 2); // Q-values for two options
     real pe; // Prediction error
+    int prev_choice_idx = -9; // Initialize previous choice
 
     for (triali in 1:subTrials[subi]) {
       // Skip trials with missing data
@@ -104,14 +110,22 @@ model {
         // Transform effective alpha
         real trial_alpha_transformed = Phi(effective_raw_alpha);
 
-        // --- Policy (Softmax Choice Rule) ---
+        // --- Policy (Softmax Choice Rule with Perseveration) ---
         choice_logits = current_beta_subj * qval; // Base logits from Q-values
+
+        if (triali > 1 && prev_choice_idx != -9) { // If not the first trial and prev_choice was valid
+          choice_logits[prev_choice_idx] += current_kappa_subj; // Add perseveration bonus
+        }
 
         choice[subi, triali] ~ categorical_logit(choice_logits);
 
         // --- Learning (Rescorla-Wagner Update) ---
         pe = current_reward_val - qval[current_choice_idx];
         qval[current_choice_idx] = qval[current_choice_idx] + trial_alpha_transformed * pe;
+
+        prev_choice_idx = current_choice_idx; // Store current choice as previous
+      } else {
+        prev_choice_idx = -9; // Invalid trial, no valid previous choice
       }
     } // End trial loop
   } // End subject loop
@@ -119,35 +133,35 @@ model {
 
 generated quantities {
   // --- Transformed Group-level Parameters (for interpretation) ---
-  real<lower=0, upper=1> alpha_mu = Phi(alpha_mu_raw);       // Transformed base learning rate mean
-  real alpha_shift_mu_raw_gq = alpha_shift_mu_raw;           // Raw alpha shift mean (group level)
-  real<lower=0, upper=10> beta_mu  = Phi(beta_mu_raw) * 10.0; // Scaled beta mean
+  real<lower=0, upper=1> alpha_mu = Phi(alpha_mu_raw);
+  real alpha_shift_mu_raw_gq = alpha_shift_mu_raw;
+  real<lower=0, upper=10> beta_mu  = Phi(beta_mu_raw) * 10.0;
+  real<lower=0, upper=1> kappa_mu = Phi(kappa_mu_raw);
 
   // --- Transformed/Raw Subject-level Parameters (for interpretation) ---
-  vector<lower=0, upper=1>[nSubs] alpha;          // Transformed base learning rate per subject (non-salient feedback)
-  vector[nSubs] alpha_shift_subj_raw_gq;          // Raw alpha shift per subject
-  vector<lower=0, upper=10>[nSubs] beta;          // Scaled beta per subject
+  vector<lower=0, upper=1>[nSubs] alpha;
+  vector[nSubs] alpha_shift_subj_raw_gq;
+  vector<lower=0, upper=10>[nSubs] beta;
+  vector<lower=0, upper=1>[nSubs] kappa;
 
-  // --- New: Interpretable Alpha Shift Parameters ---
-  // Subject-level
-  vector<lower=0, upper=1>[nSubs] alpha_learning_rate_salient_subj; // Subject's learning rate (0-1 scale) with salient feedback
-  vector[nSubs] interpretable_alpha_shift_subj;       // Subject's interpretable shift (difference on 0-1 scale due to salience)
-
-  // Group-level (derived from mean raw parameters)
-  real<lower=0, upper=1> alpha_learning_rate_salient_mu;    // Group mean learning rate (0-1 scale) with salient feedback
-  real interpretable_alpha_shift_mu;              // Group mean interpretable shift (difference on 0-1 scale due to salience)
+  // --- Interpretable Alpha Shift Parameters ---
+  vector<lower=0, upper=1>[nSubs] alpha_learning_rate_salient_subj;
+  vector[nSubs] interpretable_alpha_shift_subj;
+  real<lower=0, upper=1> alpha_learning_rate_salient_mu;
+  real interpretable_alpha_shift_mu;
 
   for (subi in 1:nSubs) {
     alpha[subi] = Phi(alpha_subj_raw[subi]);
-    alpha_shift_subj_raw_gq[subi] = alpha_shift_subj_raw[subi]; // Storing the raw shift for clarity
+    alpha_shift_subj_raw_gq[subi] = alpha_shift_subj_raw[subi];
     beta[subi]  = beta_subj_transformed[subi];
+    kappa[subi] = kappa_subj_transformed[subi];
 
-    // Calculate interpretable shift components for each subject
+    // Calculate interpretable shift components
     alpha_learning_rate_salient_subj[subi] = Phi(alpha_subj_raw[subi] + alpha_shift_subj_raw_gq[subi]);
     interpretable_alpha_shift_subj[subi] = alpha_learning_rate_salient_subj[subi] - alpha[subi];
   }
 
-  // Calculate interpretable shift components at the group level using mean raw parameters
+  // Group level interpretable shift
   alpha_learning_rate_salient_mu = Phi(alpha_mu_raw + alpha_shift_mu_raw_gq);
   interpretable_alpha_shift_mu = alpha_learning_rate_salient_mu - alpha_mu;
 
@@ -162,9 +176,10 @@ generated quantities {
     vector[2] qval_gq = rep_vector(0.5, 2);
     real pe_gq;
     log_lik[subi] = 0;
-    int prev_choice_idx_gq = -9; // Not used in this model, but keep for consistency
+    int prev_choice_idx_gq = -9;
 
-    real current_beta_s_gq  = beta[subi]; // Uses subject's transformed beta from above
+    real current_beta_s_gq  = beta[subi];
+    real current_kappa_s_gq = kappa[subi];
 
     for (triali in 1:subTrials[subi]) {
       predicted_choices[subi, triali] = -9;
@@ -177,7 +192,7 @@ generated quantities {
 
         vector[2] gq_choice_logits;
 
-        // Calculate effective raw alpha for GQ (same logic as model block)
+        // Calculate effective raw alpha for GQ
         real gq_effective_raw_alpha;
         if (gq_salient_feedback == 1) {
           gq_effective_raw_alpha = alpha_subj_raw[subi] + alpha_shift_subj_raw_gq[subi];
@@ -187,6 +202,9 @@ generated quantities {
         real gq_trial_alpha_transformed = Phi(gq_effective_raw_alpha);
 
         gq_choice_logits = current_beta_s_gq * qval_gq;
+        if (triali > 1 && prev_choice_idx_gq != -9) {
+          gq_choice_logits[prev_choice_idx_gq] += current_kappa_s_gq;
+        }
 
         vector[2] gq_choice_probs  = softmax(gq_choice_logits);
 
@@ -197,7 +215,9 @@ generated quantities {
         pe_gq = observed_reward_val - qval_gq[observed_choice_idx];
         qval_gq[observed_choice_idx] = qval_gq[observed_choice_idx] + gq_trial_alpha_transformed * pe_gq;
 
-        prev_choice_idx_gq = observed_choice_idx; // Storing for potential future use, no effect here
+        prev_choice_idx_gq = observed_choice_idx;
+      } else {
+        prev_choice_idx_gq = -9;
       }
     }
   }

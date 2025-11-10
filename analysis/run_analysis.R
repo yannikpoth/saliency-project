@@ -85,12 +85,24 @@ if (RUN_MODELS) {
   # Prepare data for Stan models
   stan_data <- prepare_stan_data(data_proc$task)
 
-  # Define models to fit (using non-centered parameterization models)
-  model_names <- c(
-    "rl_ncp_basic_normal",        # Baseline: alpha, beta only
-    "rl_ncp_shift_normal",        # + alpha_shift for salient feedback
-    "rl_ncp_shift_persev_normal"  # + kappa for perseveration/stickiness
+  # Automatically detect all Stan models in analysis/models/ directory
+  model_dir <- "analysis/models"
+  stan_files <- list.files(
+    path = model_dir,
+    pattern = "\\.stan$",
+    full.names = FALSE,
+    recursive = FALSE
   )
+
+  # Extract model names (remove .stan extension)
+  model_names <- tools::file_path_sans_ext(stan_files)
+
+  # Sort models by name for consistent ordering
+  model_names <- sort(model_names)
+
+  message(sprintf("Found %d Stan models to fit: %s",
+                  length(model_names),
+                  paste(model_names, collapse = ", ")))
 
   # Fit all models (with smart caching - will load existing fits if available)
   # Set force_refit = TRUE to refit all models from scratch
