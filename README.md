@@ -306,7 +306,7 @@ If you use this code or data, please cite:
   author  = {Poth, Yannik},
   title   = {Illuminating Decisions: How Salient Reward-Paired Cues
              Modulate Learning and Choice Behavior},
-  school  = {[Your University]},
+  school  = {RWTH Aachen},
   year    = {2025},
   type    = {Master's thesis},
   url     = {https://github.com/yannikpoth/saliency-project}

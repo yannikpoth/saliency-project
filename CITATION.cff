@@ -1,7 +1,7 @@
 # Placeholder for the project
 # TODO: Update the title, message, and date-released
 cff-version: 1.2.0
-title: "Illuminating Decisions: Salient Reward-Paired Cues"
+title: "Illuminating Decisions: How Salient Reward-Paired Cues Modulate Learning and Choice Behavior"
 message: "If you use this code, please cite it as:"
 authors:
   - family-names: Poth
