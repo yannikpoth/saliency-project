@@ -3,6 +3,128 @@
 # ============================================
 # Functions for fitting, diagnosing, and comparing hierarchical RL models
 
+# ========== Model Discovery & Selection ==========
+
+rl_discover_models <- function(model_dir = "analysis/models") {
+  #####
+  # Discover all available Stan models in the models directory
+  #
+  # Scans the specified directory for .stan files and returns their names
+  # (without the .stan extension) in sorted order.
+  #
+  # Parameters
+  # ----
+  # model_dir : character
+  #     Path to directory containing Stan model files (default: "analysis/models")
+  #
+  # Returns
+  # ----
+  # character vector
+  #     Sorted vector of model names (without .stan extension)
+  #####
+
+  stan_files <- list.files(
+    path = model_dir,
+    pattern = "\\.stan$",
+    full.names = FALSE,
+    recursive = FALSE
+  )
+
+  if (length(stan_files) == 0) {
+    stop(sprintf("No .stan files found in directory: %s", model_dir))
+  }
+
+  # Extract model names (remove .stan extension) and sort
+  model_names <- tools::file_path_sans_ext(stan_files)
+  sort(model_names)
+}
+
+
+rl_select_models_interactive <- function(model_names) {
+  #####
+  # Interactively select which models to fit
+  #
+  # Displays a numbered menu of available models and prompts the user to
+  # select which models to fit. Supports single selection (e.g., "1"),
+  # multiple selection (e.g., "1,2,3"), or all models (last option).
+  #
+  # Parameters
+  # ----
+  # model_names : character vector
+  #     Vector of available model names from rl_discover_models()
+  #
+  # Returns
+  # ----
+  # character vector
+  #     Selected model names to fit
+  #####
+
+  # Check if running interactively
+  if (!interactive()) {
+    message("Non-interactive session detected. Fitting all models.")
+    return(model_names)
+  }
+
+  # Display menu
+  cat("\n")
+  cat("========================================\n")
+  cat("  Select Models to Fit\n")
+  cat("========================================\n\n")
+
+  for (i in seq_along(model_names)) {
+    cat(sprintf("  %d: %s\n", i, model_names[i]))
+  }
+
+  cat(sprintf("  %d: ALL MODELS\n", length(model_names) + 1))
+  cat("\n")
+  cat("Enter your selection:\n")
+  cat("  - Single model: e.g., '1'\n")
+  cat("  - Multiple models: e.g., '1,2,3'\n")
+  cat(sprintf("  - All models: '%d'\n", length(model_names) + 1))
+  cat("\nYour choice: ")
+
+  # Get user input
+  user_input <- readline()
+
+  # Parse input
+  user_input <- trimws(user_input)
+
+  # Check for "ALL" option
+  all_option <- as.character(length(model_names) + 1)
+  if (user_input == all_option) {
+    message(sprintf("\n✓ Selected: ALL MODELS (%d models)", length(model_names)))
+    return(model_names)
+  }
+
+  # Parse comma-separated indices
+  indices <- tryCatch({
+    as.integer(unlist(strsplit(user_input, ",")))
+  }, error = function(e) {
+    stop("Invalid input. Please enter numbers separated by commas (e.g., '1,2,3')")
+  })
+
+  # Validate indices
+  if (any(is.na(indices))) {
+    stop("Invalid input. Please enter valid numbers.")
+  }
+
+  if (any(indices < 1 | indices > length(model_names))) {
+    stop(sprintf("Invalid model number. Please choose between 1 and %d",
+                 length(model_names)))
+  }
+
+  # Extract selected models
+  selected_models <- model_names[indices]
+
+  message(sprintf("\n✓ Selected: %s (%d model%s)",
+                  paste(selected_models, collapse = ", "),
+                  length(selected_models),
+                  ifelse(length(selected_models) > 1, "s", "")))
+
+  selected_models
+}
+
+
 # ========== Core Fitting Functions ==========
 
 rl_get_init_function <- function() {
@@ -45,7 +167,7 @@ rl_fit_single <- function(model_name,
                           stan_data,
                           chains = 4,
                           iter = 10000,
-                          warmup = 8000,
+                          warmup = 6000,
                           adapt_delta = 0.999,
                           max_treedepth = 14,
                           seed = 123,

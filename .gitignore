@@ -34,5 +34,6 @@ data/raw/**
 data/processed/**
 !data/processed/.gitkeep
 
-# Legacy files
+# Legacy and temp files
 legacy/*
+temp/*

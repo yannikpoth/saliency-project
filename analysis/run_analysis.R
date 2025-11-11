@@ -85,35 +85,27 @@ if (RUN_MODELS) {
   # Prepare data for Stan models
   stan_data <- prepare_stan_data(data_proc$task)
 
-  # Automatically detect all Stan models in analysis/models/ directory
-  model_dir <- "analysis/models"
-  stan_files <- list.files(
-    path = model_dir,
-    pattern = "\\.stan$",
-    full.names = FALSE,
-    recursive = FALSE
-  )
+  # Discover available models
+  all_models <- rl_discover_models(model_dir = "analysis/models")
 
-  # Extract model names (remove .stan extension)
-  model_names <- tools::file_path_sans_ext(stan_files)
+  message(sprintf("Found %d Stan models: %s",
+                  length(all_models),
+                  paste(all_models, collapse = ", ")))
 
-  # Sort models by name for consistent ordering
-  model_names <- sort(model_names)
+  # Interactive model selection (prompts user in console)
+  # Examples: "1" = first model only, "1,2,3" = first three models, "7" = all models
+  model_names <- rl_select_models_interactive(all_models)
 
-  message(sprintf("Found %d Stan models to fit: %s",
-                  length(model_names),
-                  paste(model_names, collapse = ", ")))
-
-  # Fit all models (with smart caching - will load existing fits if available)
-  # Set force_refit = TRUE to refit all models from scratch
+  # Fit selected models (with smart caching - will load existing fits if available)
+  # Set force_refit = TRUE to refit selected models from scratch
   fits <- rl_fit_all(
     model_names = model_names,
     stan_data = stan_data,
     fit_dir = "analysis/outputs/fits",
-    force_refit = FALSE,
+    force_refit = TRUE,
     chains = 4,
-    iter = 2000,
-    warmup = 1000,
+    iter = 9000,
+    warmup = 6000,
     verbose = TRUE
   )
 
