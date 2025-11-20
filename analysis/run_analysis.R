@@ -3,7 +3,7 @@
 # ============================================
 
 # ========== Configuration ==========
-RUN_EDA <- FALSE      # Run exploratory data analysis and generate report
+RUN_EDA <- TRUE       # Run exploratory data analysis and generate report
 RUN_MODELS <- TRUE  # Run reinforcement learning model fitting
 # ===================================
 
@@ -26,6 +26,7 @@ source("analysis/R/preprocess.R")
 source("analysis/R/rl_models.R")
 source("analysis/R/behavior_metrics.R")
 source("analysis/R/viz.R")
+source("analysis/R/diagnostics.R")
 
 # Initialize Input/Output
 io_init()
@@ -65,6 +66,11 @@ if (RUN_EDA) {
   # plot_prp_analysis(prp_metrics, "analysis/outputs/figs")
   # plot_questionnaire_analysis(quest_metrics, "analysis/outputs/figs")
 
+  # Generate participant inspection plots (data inspection)
+  # This creates plots in analysis/outputs/figs/inspection/participant_wise
+  viz_inspection_participant_trials(data_proc$task, "analysis/outputs/figs")
+  viz_inspection_participant_choice_reward(data_proc$task, "analysis/outputs/figs")
+
   # TODO: Generate EDA report
   # if (!dir.exists("analysis/outputs/reports")) {
   #   dir.create("analysis/outputs/reports", recursive = TRUE)
@@ -102,22 +108,35 @@ if (RUN_MODELS) {
     model_names = model_names,
     stan_data = stan_data,
     fit_dir = "analysis/outputs/fits",
-    force_refit = TRUE,
+    force_refit = FALSE,
     chains = 4,
-    iter = 9000,
-    warmup = 6000,
+    iter = 10000,
+    warmup = 8000,
     verbose = TRUE
   )
 
-  # Check convergence diagnostics for all models
-  message("\n=== Checking Convergence Diagnostics ===")
-  convergence_results <- list()
+  # Timestamp for this analysis run (used for output directories)
+  TIMESTAMP <- format(Sys.time(), "%Y%m%d_%H%M%S")
+
+  # Run comprehensive diagnostics for all models
+  message("\n=== Running Comprehensive Diagnostics ===")
+  diagnostic_summaries <- list()
+
   for (model_name in names(fits)) {
-    convergence_results[[model_name]] <- rl_check_convergence(
-      fits[[model_name]],
-      model_name = model_name
+    # Run full diagnostics suite (plots + tables)
+    # Outputs are saved to analysis/outputs/[figs|tables]/[model]_[timestamp]/diagnostics/
+    results <- diagnostics_run_all(
+      fit = fits[[model_name]],
+      model_name = model_name,
+      timestamp = TIMESTAMP
     )
+    diagnostic_summaries[[model_name]] <- results$summary
   }
+
+  # Combine diagnostic summaries into one table for comparison
+  all_diagnostics <- dplyr::bind_rows(diagnostic_summaries)
+  if (!dir.exists("analysis/outputs/tables")) dir.create("analysis/outputs/tables", recursive = TRUE)
+  readr::write_csv(all_diagnostics, file.path("analysis/outputs/tables", paste0("all_models_diagnostics_", TIMESTAMP, ".csv")))
 
   # Compare models using LOO
   comparison <- rl_compare_models(

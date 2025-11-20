@@ -6,11 +6,11 @@ io_init <- function() {
   # if they don't already exist.
   #
   # Parameters
-  # ----------
+  # ----
   # None
   #
   # Returns
-  # -------
+  # ----
   # NULL (invisible)
   #     Creates directories as side effect
   #####
@@ -28,12 +28,12 @@ io_read_raw <- function(path = "data/raw") {
   # Questionnaire files follow pattern: [ID]_questionnaire_data.csv
   #
   # Parameters
-  # ----------
+  # ----
   # path : character
   #     Directory path containing raw CSV files (default: "data/raw")
   #
   # Returns
-  # -------
+  # ----
   # list
   #     Named list with two elements:
   #     - task: Combined tibble of all task data with participant_id added
@@ -73,7 +73,7 @@ io_write_processed <- function(data_proc, path = "data/processed") {
   # Write preprocessed data to disk as CSV files
   #
   # Parameters
-  # ----------
+  # ----
   # data_proc : list
   #     Named list with 'task' and 'questionnaire' tibbles
   # path : character
@@ -92,12 +92,12 @@ io_read_processed <- function(path = "data/processed") {
   # Read preprocessed data from disk
   #
   # Parameters
-  # ----------
+  # ----
   # path : character
   #     Directory path containing processed data files
   #
   # Returns
-  # -------
+  # ----
   # list
   #     Named list with 'task' and 'questionnaire' tibbles
   #####
@@ -111,5 +111,63 @@ io_read_processed <- function(path = "data/processed") {
   list(
     task = readr::read_csv(task_file, show_col_types = FALSE),
     questionnaire = readr::read_csv(quest_file, show_col_types = FALSE)
+  )
+}
+
+io_get_model_output_dirs <- function(model_name, timestamp = NULL) {
+  #####
+  # Create and return output directories for a specific model run
+  #
+  # Creates a structured directory tree:
+  # analysis/outputs/
+  #   ├── figs/
+  #   │   └── [model_name]_[timestamp]/
+  #   │       └── diagnostics/
+  #   └── tables/
+  #       └── [model_name]_[timestamp]/
+  #           └── diagnostics/
+  #
+  # Parameters
+  # ----
+  # model_name : character
+  #     Name of the model (e.g., "model1_baseline")
+  # timestamp : character
+  #     Timestamp string (e.g., "20231025_120000"). If NULL, generates current time.
+  #
+  # Returns
+  # ----
+  # list
+  #     Named list with paths:
+  #     - figs: Path to figures directory
+  #     - tables: Path to tables directory
+  #     - figs_diag: Path to figures/diagnostics directory
+  #     - tables_diag: Path to tables/diagnostics directory
+  #####
+
+  if (is.null(timestamp)) {
+    timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
+  }
+
+  # Create base directory name
+  run_id <- sprintf("%s_%s", model_name, timestamp)
+
+  # Define paths
+  base_figs <- file.path("analysis/outputs/figs", run_id)
+  base_tables <- file.path("analysis/outputs/tables", run_id)
+
+  figs_diag <- file.path(base_figs, "diagnostics")
+  tables_diag <- file.path(base_tables, "diagnostics")
+
+  # Create directories
+  for (d in c(base_figs, base_tables, figs_diag, tables_diag)) {
+    if (!dir.exists(d)) dir.create(d, recursive = TRUE)
+  }
+
+  list(
+    figs = base_figs,
+    tables = base_tables,
+    figs_diag = figs_diag,
+    tables_diag = tables_diag,
+    run_id = run_id
   )
 }

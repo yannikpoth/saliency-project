@@ -127,7 +127,7 @@ rl_select_models_interactive <- function(model_names) {
 
 # ========== Core Fitting Functions ==========
 
-rl_get_init_function <- function() {
+rl_get_init_function <- function(stan_data = NULL) {
   #####
   # Create flexible initialization function for Stan sampling
   #
@@ -135,9 +135,16 @@ rl_get_init_function <- function() {
   # parameters. Works with all model variants (basic, shift, perseveration)
   # by providing all possible parameters; Stan ignores unused ones.
   #
+  # Uses hard-coded sensible values based on typical RL parameter ranges:
+  # - alpha (learning rate): ~0.65-0.70 in transformed space
+  # - beta (inverse temperature): ~3-4 in [0, 10] space
+  # - shift and kappa parameters: near 0 (neutral starting point)
+  #
   # Parameters
   # ----
-  # None
+  # stan_data : list or NULL
+  #     Stan data list containing nSubs (default: NULL). If provided, generates
+  #     subject-level initial values; otherwise only group-level values.
   #
   # Returns
   # ----
@@ -146,19 +153,41 @@ rl_get_init_function <- function() {
   #####
 
   function() {
-    list(
-      # Group-level means (start near center of transformed range)
-      alpha_mu_raw = runif(1, -1, 1),
-      beta_mu_raw = runif(1, -1, 1),
-      alpha_shift_mu_raw = rnorm(1, 0, 0.2),
-      kappa_mu_raw = rnorm(1, 0, 0.2),
+    init_list <- list(
+      # Group-level means
+      # alpha_mu_raw = 0.5 gives Phi(0.5) ≈ 0.69 for transformed alpha
+      alpha_mu_raw = 0.5,
 
-      # Group-level SDs (start with small-to-moderate positive values)
-      alpha_sd_raw = runif(1, 0.5, 1.5),
-      alpha_shift_sd_raw = runif(1, 0.5, 1.5),
-      beta_sd_raw = runif(1, 0.5, 1.5),
-      kappa_sd_raw = runif(1, 0.5, 1.5)
+      # beta_mu_raw = -0.2 gives Phi(-0.2) * 10 ≈ 4.2 for transformed beta
+      beta_mu_raw = -0.2,
+
+      # Shift and kappa start near 0
+      alpha_shift_mu_raw = 0.0,
+      kappa_mu_raw = 0.0,
+      kappa_shift_mu_raw = 0.0,
+
+      # Group-level SDs (start with moderate positive values)
+      alpha_sd_raw = 0.8,
+      alpha_shift_sd_raw = 0.6,
+      beta_sd_raw = 0.8,
+      kappa_sd_raw = 0.6,
+      kappa_shift_sd_raw = 0.6
     )
+
+    # Add subject-level initial values if stan_data is provided
+    if (!is.null(stan_data) && "nSubs" %in% names(stan_data)) {
+      nSubs <- stan_data$nSubs
+
+      # Initialize subject-level parameters near group means with small jitter
+      # to avoid identical starting points across subjects
+      init_list$alpha_subj_raw <- rnorm(nSubs, mean = 0.5, sd = 0.1)
+      init_list$beta_subj_raw <- rnorm(nSubs, mean = -0.2, sd = 0.1)
+      init_list$alpha_shift_subj_raw <- rnorm(nSubs, mean = 0.0, sd = 0.05)
+      init_list$kappa_subj_raw <- rnorm(nSubs, mean = 0.0, sd = 0.05)
+      init_list$kappa_shift_subj_raw <- rnorm(nSubs, mean = 0.0, sd = 0.05)
+    }
+
+    return(init_list)
   }
 }
 
@@ -222,7 +251,7 @@ rl_fit_single <- function(model_name,
     warmup = warmup,
     control = list(adapt_delta = adapt_delta, max_treedepth = max_treedepth),
     seed = seed,
-    init = rl_get_init_function()
+    init = rl_get_init_function(stan_data)
   )
 
   if (verbose) {
