@@ -185,6 +185,14 @@ rl_get_init_function <- function(stan_data = NULL) {
       init_list$alpha_shift_subj_raw <- rnorm(nSubs, mean = 0.0, sd = 0.05)
       init_list$kappa_subj_raw <- rnorm(nSubs, mean = 0.0, sd = 0.05)
       init_list$kappa_shift_subj_raw <- rnorm(nSubs, mean = 0.0, sd = 0.05)
+
+      # FIX: Initialize Subject 16 to "Yellow Chain" values to aid convergence (Prof Request 2025-11-25)
+      # Targeting the "good" mode: Alpha ~ 0 (Transformed ~ 0.5), Beta ~ -2 (Transformed ~ 0.2, noisy)
+      if (nSubs >= 16) {
+        init_list$alpha_subj_raw[16] <- 0.5
+        init_list$beta_subj_raw[16] <- -1.5
+        init_list$alpha_shift_subj_raw[16] <- 0.0
+      }
     }
 
     return(init_list)
@@ -266,6 +274,7 @@ rl_load_or_fit <- function(model_name,
                            stan_data,
                            fit_dir = "analysis/outputs/fits",
                            force_refit = FALSE,
+                           timestamp = NULL,
                            ...) {
   #####
   # Load existing model fit or fit a new one (smart caching)
@@ -283,6 +292,8 @@ rl_load_or_fit <- function(model_name,
   #     Directory to save/load fit objects (default: "analysis/outputs/fits")
   # force_refit : logical
   #     If TRUE, refit even if cached fit exists (default: FALSE)
+  # timestamp : character
+  #     Optional timestamp string to append to the filename (default: NULL)
   # ... : additional arguments
   #     Passed to rl_fit_single()
   #
@@ -297,17 +308,31 @@ rl_load_or_fit <- function(model_name,
     dir.create(fit_dir, recursive = TRUE)
   }
 
-  fit_path <- file.path(fit_dir, paste0(model_name, "_fit.rds"))
+  # Look for existing fits (with or without timestamp)
+  # Matches model_name_fit.rds or model_name_fit_TIMESTAMP.rds
+  pattern <- paste0("^", model_name, "_fit.*\\.rds$")
+  existing_files <- list.files(fit_dir, pattern = pattern, full.names = TRUE)
 
   # Try to load existing fit
-  if (!force_refit && file.exists(fit_path)) {
-    message(sprintf("Loading cached fit: %s", model_name))
-    fit <- readRDS(fit_path)
+  if (!force_refit && length(existing_files) > 0) {
+    # Find the most recently modified file
+    info <- file.info(existing_files)
+    latest_file <- rownames(info)[which.max(info$mtime)]
+
+    message(sprintf("Loading cached fit: %s", basename(latest_file)))
+    fit <- readRDS(latest_file)
     return(fit)
   }
 
   # Fit new model
   fit <- rl_fit_single(model_name, stan_data, ...)
+
+  # Determine save path
+  if (!is.null(timestamp)) {
+    fit_path <- file.path(fit_dir, paste0(model_name, "_fit_", timestamp, ".rds"))
+  } else {
+    fit_path <- file.path(fit_dir, paste0(model_name, "_fit.rds"))
+  }
 
   # Save for future use
   saveRDS(fit, fit_path)
@@ -321,6 +346,7 @@ rl_fit_all <- function(model_names,
                        stan_data,
                        fit_dir = "analysis/outputs/fits",
                        force_refit = FALSE,
+                       timestamp = NULL,
                        ...) {
   #####
   # Fit multiple RL models with smart caching
@@ -338,6 +364,8 @@ rl_fit_all <- function(model_names,
   #     Directory to save/load fit objects (default: "analysis/outputs/fits")
   # force_refit : logical
   #     If TRUE, refit all models even if cached (default: FALSE)
+  # timestamp : character
+  #     Optional timestamp string to append to filenames (default: NULL)
   # ... : additional arguments
   #     Passed to rl_fit_single() (e.g., chains, iter, warmup)
   #
@@ -356,6 +384,7 @@ rl_fit_all <- function(model_names,
       stan_data,
       fit_dir = fit_dir,
       force_refit = force_refit,
+      timestamp = timestamp,
       ...
     )
   }

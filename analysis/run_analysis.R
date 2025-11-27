@@ -3,7 +3,7 @@
 # ============================================
 
 # ========== Configuration ==========
-RUN_EDA <- TRUE       # Run exploratory data analysis and generate report
+RUN_EDA <- FALSE       # Run exploratory data analysis and generate report
 RUN_MODELS <- TRUE  # Run reinforcement learning model fitting
 # ===================================
 
@@ -102,21 +102,22 @@ if (RUN_MODELS) {
   # Examples: "1" = first model only, "1,2,3" = first three models, "7" = all models
   model_names <- rl_select_models_interactive(all_models)
 
+  # Timestamp for this analysis run (used for output directories and fit files)
+  TIMESTAMP <- format(Sys.time(), "%Y%m%d_%H%M%S")
+
   # Fit selected models (with smart caching - will load existing fits if available)
   # Set force_refit = TRUE to refit selected models from scratch
   fits <- rl_fit_all(
     model_names = model_names,
     stan_data = stan_data,
     fit_dir = "analysis/outputs/fits",
-    force_refit = FALSE,
-    chains = 4,
-    iter = 10000,
-    warmup = 8000,
+    force_refit = TRUE,
+    timestamp = TIMESTAMP,
+    chains = 2,
+    iter = 12000,
+    warmup = 10000,
     verbose = TRUE
   )
-
-  # Timestamp for this analysis run (used for output directories)
-  TIMESTAMP <- format(Sys.time(), "%Y%m%d_%H%M%S")
 
   # Run comprehensive diagnostics for all models
   message("\n=== Running Comprehensive Diagnostics ===")

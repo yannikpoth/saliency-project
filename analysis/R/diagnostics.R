@@ -41,13 +41,34 @@ diagnostics_run_all <- function(fit, model_name, timestamp = NULL) {
   readr::write_csv(param_diag, file.path(dirs$tables_diag, "parameter_diagnostics.csv"))
 
   # Save problematic parameters specifically
-  high_rhat <- param_diag[param_diag$Rhat > 1.01, ]
+  # Use which() to explicitly select indices where the condition is TRUE,
+  # automatically dropping NAs or NaNs to prevent empty/NA rows.
+  high_rhat <- param_diag[which(param_diag$Rhat > 1.01), ]
+
   if (nrow(high_rhat) > 0) {
-    readr::write_csv(high_rhat, file.path(dirs$tables_diag, "problematic_rhat.csv"))
+    # Exclude generated quantities and other nuisance parameters from the CSV as well
+    # (Same logic as for the plots)
+    exclude_patterns <- c(
+      "^pp_", "^predicted", "^log_lik", "^y_pred",
+      "_gq", "_transformed",
+      "_subj\\[",
+      "^(alpha|beta|kappa|alpha_shift|kappa_shift)\\["
+    )
+    keep_mask <- !grepl(paste(exclude_patterns, collapse = "|"), high_rhat$Parameter)
+    high_rhat <- high_rhat[keep_mask, ]
+
+    if (nrow(high_rhat) > 0) {
+      # Sort by Rhat descending (worst first)
+      high_rhat <- high_rhat[order(high_rhat$Rhat, decreasing = TRUE), ]
+      readr::write_csv(high_rhat, file.path(dirs$tables_diag, "problematic_rhat.csv"))
+    }
   }
 
   # 3. Generate Plots
   diagnostics_plot_mcmc(fit, dirs$figs_diag)
+
+  # Generate focused plots for problematic parameters if any
+  diagnostics_plot_problematic(fit, param_diag, dirs$figs_diag)
 
   # 4. Print brief summary to console
   message(sprintf("  Max Rhat: %.4f | Min ESS: %.0f",
@@ -154,6 +175,11 @@ diagnostics_compute_parameter_stats <- function(fit) {
 
   # Move Parameter to first column
   result <- result[, c("Parameter", "Mean", "SD", "Rhat", "Rhat_Status", "ESS", "ESS_Status")]
+
+  # Filter out pp_choice and predicted_ parameters
+  exclude_patterns <- c("^pp_choice", "^predicted_")
+  keep_mask <- !grepl(paste(exclude_patterns, collapse = "|"), result$Parameter)
+  result <- result[keep_mask, ]
 
   # Filter out internal calculations if desired, but keeping all is safer for diagnostics
   # Just ensure row names are clean
@@ -294,4 +320,89 @@ diagnostics_plot_mcmc <- function(fit, output_dir) {
       message("Skipping PPC plot due to structure mismatch: ", e$message)
     })
   }
+}
+
+diagnostics_plot_problematic <- function(fit, param_diag, output_dir) {
+  #####
+  # Plot trace plots for parameters with high R-hat (> 1.01)
+  #
+  # Parameters
+  # ----
+  # fit : stanfit
+  #     Fitted Stan model
+  # param_diag : data.frame
+  #     Parameter diagnostics table from diagnostics_compute_parameter_stats
+  # output_dir : character
+  #     Directory to save plots
+  #
+  # Returns
+  # ----
+  # NULL
+  #####
+
+  requireNamespace("bayesplot")
+  requireNamespace("ggplot2")
+
+  # 1. Filter for high R-hat
+  # Use which() to safely handle NAs
+  prob_params <- param_diag[which(param_diag$Rhat > 1.01), ]
+
+  if (nrow(prob_params) == 0) return(NULL)
+
+  # 2. Exclude generated quantities and other nuisance parameters
+  # Exclude:
+  # - Posterior predictive checks (pp_, predicted, y_pred)
+  # - Log likelihood (log_lik)
+  # - Generated quantities/transformed suffixes (_gq, _transformed)
+  # - Transformed subject vectors ending in _subj[...] (keep _subj_raw[...])
+  # - Transformed base vectors like alpha[...] (keep alpha_mu, alpha_raw, etc.)
+  exclude_patterns <- c(
+    "^pp_", "^predicted", "^log_lik", "^y_pred",
+    "_gq", "_transformed",
+    "_subj\\[",
+    "^(alpha|beta|kappa|alpha_shift|kappa_shift)\\["
+  )
+  keep_mask <- !grepl(paste(exclude_patterns, collapse = "|"), prob_params$Parameter)
+  prob_params <- prob_params[keep_mask, ]
+
+  if (nrow(prob_params) == 0) return(NULL)
+
+  # 3. Sort and Limit
+  prob_params <- prob_params[order(prob_params$Rhat, decreasing = TRUE), ]
+  top_n <- min(nrow(prob_params), 15)
+  # Ensure parameters are characters
+  params_to_plot <- as.character(prob_params$Parameter[1:top_n])
+
+  message(sprintf("  Generating trace plots for top %d problematic parameters...", length(params_to_plot)))
+
+  tryCatch({
+    # 4. Create Plot
+    # Extract array first to check for validity/NAs
+    post_array <- as.array(fit, pars = params_to_plot)
+
+    # Check for NAs in array and warn/replace if needed
+    if (any(is.na(post_array))) {
+       message("  Warning: NAs found in posterior samples for problematic parameters. Trace plot might fail or show gaps.")
+       # If we really wanted to fix, we could filter valid iterations, but that breaks structure.
+       # Proceeding, hoping bayesplot handles it or users fix the model.
+    }
+
+    # Calculate height: ~2 inches per row, min 4
+    n_rows <- ceiling(length(params_to_plot) / 3)
+    plot_height <- max(4, n_rows * 2.5)
+
+    # Use mcmc_trace with array
+    p_trace <- bayesplot::mcmc_trace(post_array,
+                                     facet_args = list(ncol = 3)) +
+      ggplot2::ggtitle("Trace Plots: Highest R-hat Parameters") +
+      ggplot2::theme_minimal() +
+      ggplot2::theme(legend.position = "none") +
+      ggplot2::scale_color_manual(values = c("red", "blue", "green4", "yellow"))
+
+    ggplot2::ggsave(file.path(output_dir, "problematic_trace_plots.png"),
+                    p_trace, width = 12, height = plot_height)
+
+  }, error = function(e) {
+    message("  Warning: Could not create problematic trace plots: ", e$message)
+  })
 }
