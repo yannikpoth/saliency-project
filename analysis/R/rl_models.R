@@ -185,14 +185,6 @@ rl_get_init_function <- function(stan_data = NULL) {
       init_list$alpha_shift_subj_raw <- rnorm(nSubs, mean = 0.0, sd = 0.05)
       init_list$kappa_subj_raw <- rnorm(nSubs, mean = 0.0, sd = 0.05)
       init_list$kappa_shift_subj_raw <- rnorm(nSubs, mean = 0.0, sd = 0.05)
-
-      # FIX: Initialize Subject 16 to "Yellow Chain" values to aid convergence (Prof Request 2025-11-25)
-      # Targeting the "good" mode: Alpha ~ 0 (Transformed ~ 0.5), Beta ~ -2 (Transformed ~ 0.2, noisy)
-      if (nSubs >= 16) {
-        init_list$alpha_subj_raw[16] <- 0.5
-        init_list$beta_subj_raw[16] <- -1.5
-        init_list$alpha_shift_subj_raw[16] <- 0.0
-      }
     }
 
     return(init_list)
@@ -202,9 +194,9 @@ rl_get_init_function <- function(stan_data = NULL) {
 
 rl_fit_single <- function(model_name,
                           stan_data,
-                          chains = 4,
+                          chains = 2,
                           iter = 10000,
-                          warmup = 6000,
+                          warmup = 8000,
                           adapt_delta = 0.999,
                           max_treedepth = 14,
                           seed = 123,
@@ -219,7 +211,7 @@ rl_fit_single <- function(model_name,
   # stan_data : list
   #     Stan data list from prepare_stan_data()
   # chains : integer
-  #     Number of MCMC chains (default: 4)
+ #     Number of MCMC chains (default: 2)
   # iter : integer
   #     Total iterations per chain (default: 10000)
   # warmup : integer
@@ -472,12 +464,13 @@ rl_compare_models <- function(fit_list,
   # Compare multiple RL models using LOO cross-validation
   #
   # Computes LOO for each model and performs pairwise comparisons.
-  # Optionally saves results to CSV.
+  # Can accept either a list of fitted model objects or a list of pre-computed
+  # LOO objects (for memory efficiency).
   #
   # Parameters
   # ----
   # fit_list : named list
-  #     List of stanfit objects from rl_fit_all()
+  #     List of stanfit objects from rl_fit_all(), OR list of psis_loo objects
   # save_dir : character
   #     Directory to save comparison table (default: "analysis/outputs/tables")
   # save_file : logical
@@ -492,13 +485,29 @@ rl_compare_models <- function(fit_list,
   #     - winning_model: name of best model
   #####
 
-  message("\n=== Computing LOO for model comparison ===")
+  message("\n=== Computing/Aggregating LOO for model comparison ===")
+
+  if (length(fit_list) == 0) {
+    warning("No models provided for comparison (fit_list is empty).")
+    return(NULL)
+  }
 
   loo_objects <- list()
-  for (model_name in names(fit_list)) {
-    message(sprintf("Computing LOO for: %s", model_name))
-    log_lik <- loo::extract_log_lik(fit_list[[model_name]], parameter_name = "log_lik")
-    loo_objects[[model_name]] <- loo::loo(log_lik)
+
+  # Check if input is already a list of LOO objects
+  first_item <- fit_list[[1]]
+  is_loo_list <- inherits(first_item, "psis_loo")
+
+  if (is_loo_list) {
+    message("Input detected as list of pre-computed LOO objects.")
+    loo_objects <- fit_list
+  } else {
+    message("Input detected as list of Stan fit objects. Computing LOO now...")
+    for (model_name in names(fit_list)) {
+      message(sprintf("Computing LOO for: %s", model_name))
+      log_lik <- loo::extract_log_lik(fit_list[[model_name]], parameter_name = "log_lik")
+      loo_objects[[model_name]] <- loo::loo(log_lik)
+    }
   }
 
   # Perform comparison

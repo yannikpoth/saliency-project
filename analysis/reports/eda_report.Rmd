@@ -1,0 +1,57 @@
+---
+title: "Exploratory Data Analysis Report"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document:
+    theme: readable
+    toc: true
+    toc_float: true
+params:
+  cleaning_stats_agg: NA
+  cleaning_stats_subj: NA
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+library(knitr)
+library(kableExtra)
+library(dplyr)
+```
+
+# 1. Data Cleaning Statistics
+
+This section summarizes data quality, including missed trials and trials with unrealistically fast reaction times (e.g., < 200ms).
+
+## 1.1 Aggregate Statistics
+
+```{r cleaning-agg}
+if (!is.null(params$cleaning_stats_agg)) {
+  params$cleaning_stats_agg %>%
+    kable(digits = 2, caption = "Table 1.1: Aggregate Data Cleaning Statistics") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+} else {
+  print("No aggregate statistics provided.")
+}
+```
+
+## 1.2 Subject-Level Statistics
+
+```{r cleaning-subj}
+if (!is.null(params$cleaning_stats_subj)) {
+  params$cleaning_stats_subj %>%
+    dplyr::rename(
+      "Subject ID" = participant_id,
+      "Total Trials" = total_main_trials,
+      "Missed" = n_missed_choice,
+      "Fast RT" = n_fast_rt,
+      "Valid Trials" = n_valid_trials,
+      "Invalid Trials" = n_invalid_trials,
+      "Valid (%)" = percent_valid_trials
+    ) %>%
+    kable(digits = 2, caption = "Table 1.2: Subject-Level Data Cleaning Summary") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+    scroll_box(height = "500px")
+} else {
+  print("No subject-level statistics provided.")
+}
+```

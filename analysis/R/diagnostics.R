@@ -16,7 +16,7 @@ diagnostics_run_all <- function(fit, model_name, timestamp = NULL) {
   # fit : stanfit
   #     Fitted Stan model object
   # model_name : character
-  #     Name of the model (e.g., "model1_baseline")
+  #     Name of the model (e.g., "model01_baseline")
   # timestamp : character or NULL
   #     Timestamp for directory naming. If NULL, generates one.
   #

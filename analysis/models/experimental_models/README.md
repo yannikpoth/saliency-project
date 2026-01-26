@@ -24,7 +24,7 @@ All models follow the professor's updated specifications:
 ## Factorial Design: 6 Models
 
 ### Model 1: Baseline
-**File**: `model1_baseline.stan`
+**File**: `model01_baseline.stan`
 **Parameters**: `alpha`, `beta`
 
 - No modulation by salience
@@ -34,7 +34,7 @@ All models follow the professor's updated specifications:
 ---
 
 ### Model 2: Alpha Shift Only
-**File**: `model2_alpha_shift.stan`
+**File**: `model02_alpha_shift.stan`
 **Parameters**: `alpha`, `beta`, `alpha_shift`
 
 - Tests if **salient feedback modulates learning rate**
@@ -45,7 +45,7 @@ All models follow the professor's updated specifications:
 ---
 
 ### Model 3: Kappa Only
-**File**: `model3_kappa.stan`
+**File**: `model03_kappa.stan`
 **Parameters**: `alpha`, `beta`, `kappa`
 
 - Tests for **choice perseveration/stickiness**
@@ -56,7 +56,7 @@ All models follow the professor's updated specifications:
 ---
 
 ### Model 4: Alpha Shift + Kappa
-**File**: `model4_alpha_shift_kappa.stan`
+**File**: `model04_alpha_shift_kappa.stan`
 **Parameters**: `alpha`, `beta`, `alpha_shift`, `kappa`
 
 - Tests **both effects independently** (no interaction)
@@ -67,7 +67,7 @@ All models follow the professor's updated specifications:
 ---
 
 ### Model 5: Kappa + Kappa Shift
-**File**: `model5_kappa_kappa_shift.stan`
+**File**: `model05_kappa_kappa_shift.stan`
 **Parameters**: `alpha`, `beta`, `kappa`, `kappa_shift`
 
 - Tests if **salient feedback modulates perseveration**
@@ -79,7 +79,7 @@ All models follow the professor's updated specifications:
 ---
 
 ### Model 6: Full Model
-**File**: `model6_full.stan`
+**File**: `model06_full.stan`
 **Parameters**: `alpha`, `beta`, `alpha_shift`, `kappa`, `kappa_shift`
 
 - **Complete model** with all parameters

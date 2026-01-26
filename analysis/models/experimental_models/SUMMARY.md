@@ -39,12 +39,12 @@ if (prev_salient_feedback == 1) {
 
 | Model | File | Parameters | Tests |
 |-------|------|------------|-------|
-| **1** | `model1_baseline.stan` | α, β | Baseline (no effects) |
-| **2** | `model2_alpha_shift.stan` | α, β, α_shift | Salience → learning rate |
-| **3** | `model3_kappa.stan` | α, β, κ | Perseveration only |
-| **4** | `model4_alpha_shift_kappa.stan` | α, β, α_shift, κ | Both (no interaction) |
-| **5** | `model5_kappa_kappa_shift.stan` | α, β, κ, κ_shift | Salience → perseveration |
-| **6** | `model6_full.stan` | α, β, α_shift, κ, κ_shift | Full model (all effects) |
+| **1** | `model01_baseline.stan` | α, β | Baseline (no effects) |
+| **2** | `model02_alpha_shift.stan` | α, β, α_shift | Salience → learning rate |
+| **3** | `model03_kappa.stan` | α, β, κ | Perseveration only |
+| **4** | `model04_alpha_shift_kappa.stan` | α, β, α_shift, κ | Both (no interaction) |
+| **5** | `model05_kappa_kappa_shift.stan` | α, β, κ, κ_shift | Salience → perseveration |
+| **6** | `model06_full.stan` | α, β, α_shift, κ, κ_shift | Full model (all effects) |
 
 ## Theoretical Questions Each Model Answers
 
@@ -109,12 +109,12 @@ Beta Mu Multiplikation relaxen (z.B. 10 statt 4)
 
 ```
 analysis/models/new_models/
-├── model1_baseline.stan
-├── model2_alpha_shift.stan
-├── model3_kappa.stan
-├── model4_alpha_shift_kappa.stan
-├── model5_kappa_kappa_shift.stan
-├── model6_full.stan
+├── model01_baseline.stan
+├── model02_alpha_shift.stan
+├── model03_kappa.stan
+├── model04_alpha_shift_kappa.stan
+├── model05_kappa_kappa_shift.stan
+├── model06_full.stan
 ├── README.md          # Detailed documentation
 └── SUMMARY.md         # This file
 ```

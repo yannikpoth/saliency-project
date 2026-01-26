@@ -22,7 +22,7 @@ preprocess <- function(data_raw) {
 
   # Validation: check required columns exist
   required_task_cols <- c("participant_id", "mode", "trial", "choice", "reward",
-                          "condition", "reward_prob_1", "reward_prob_2")
+                          "condition", "reward_prob_1", "reward_prob_2", "reaction_time")
   required_quest_cols <- c("participant_id", "bis_total", "ss_total")
 
   stopifnot("task data missing required columns" =
@@ -41,6 +41,7 @@ preprocess <- function(data_raw) {
       reward = as.numeric(reward),
       condition = as.numeric(condition),
       trial = as.integer(trial),
+      reaction_time = as.numeric(reaction_time),
       missed = is.na(choice)
     )
 

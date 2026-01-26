@@ -224,7 +224,214 @@ viz_inspection_participant_choice_reward <- function(task_data, output_dir) {
 # 2. Main Analysis
 # ============================================
 
-# (Placeholders for future behavioral plots)
+viz_extract_posterior_data <- function(fit, model_name) {
+  #####
+  # Extract posterior samples for specific parameters for visualization
+  #
+  # Helper function to extract lightweight data for viz_posterior_densities_grid
+  # without keeping the full model in memory.
+  #
+  # Parameters
+  # ----
+  # fit : stanfit
+  #     Fitted Stan model object
+  # model_name : character
+  #     Name of the model
+  #
+  # Returns
+  # ----
+  # data.frame
+  #     Long-format data frame with columns: Model, Parameter, Value
+  #     Returns empty data frame if no target parameters found.
+  #####
+
+  param_order <- c("alpha_mu", "beta_mu", "interpretable_alpha_shift_mu", "kappa_mu", "interpretable_kappa_shift_mu")
+  avail_pars <- names(fit)
+  pars_to_get <- intersect(param_order, avail_pars)
+
+  plot_data <- data.frame()
+
+  if (length(pars_to_get) > 0) {
+    samples <- rstan::extract(fit, pars = pars_to_get)
+
+    for (p in pars_to_get) {
+      vals <- as.vector(samples[[p]])
+      # Downsample if too huge
+      if (length(vals) > 4000) vals <- sample(vals, 4000)
+
+      df_chunk <- data.frame(
+        Model = model_name,
+        Parameter = p,
+        Value = vals
+      )
+      plot_data <- rbind(plot_data, df_chunk)
+    }
+  }
+
+  return(plot_data)
+}
+
+viz_posterior_densities_grid <- function(data_list, output_dir) {
+  #####
+  # Generate a multiplot grid of posterior densities for all models and parameters
+  #
+  # Creates a faceted density plot where rows are models (ordered from simple to complex)
+  # and columns are key parameters. Includes median lines.
+  #
+  # Parameters
+  # ----
+  # data_list : list or data.frame
+  #     Either a list of data frames from viz_extract_posterior_data(),
+  #     or a single combined data frame.
+  #     (Legacy support: If a list of stanfits is passed, it attempts to extract data,
+  #      but this is deprecated for memory reasons).
+  # output_dir : character
+  #     Directory to save the plot
+  #
+  # Returns
+  # ----
+  # NULL (invisible)
+  #     Saves plot to disk
+  #####
+
+  requireNamespace("ggplot2")
+  requireNamespace("dplyr")
+  requireNamespace("tidyr")
+
+  message("Generating posterior density grid...")
+
+  # 1. Define configuration
+  # -----------------------
+
+  # Model order and labels (Plotmath expressions for label_parsed)
+  model_order <- c(
+    "model01_baseline", "model07_baseline_ncp",
+    "model02_alpha_shift", "model08_alpha_shift_ncp",
+    "model03_kappa", "model09_kappa_ncp",
+    "model04_alpha_shift_kappa", "model10_alpha_shift_kappa_ncp",
+    "model05_kappa_kappa_shift", "model11_kappa_kappa_shift_ncp",
+    "model06_full", "model12_full_ncp"
+  )
+
+  model_labels <- c(
+    "model01_baseline" = "Baseline",
+    "model07_baseline_ncp" = "Baseline~(NCP)",
+    "model02_alpha_shift" = "BL + alpha[shift]",
+    "model08_alpha_shift_ncp" = "BL + alpha[shift]~(NCP)",
+    "model03_kappa" = "BL + kappa",
+    "model09_kappa_ncp" = "BL + kappa~(NCP)",
+    "model04_alpha_shift_kappa" = "BL + alpha[shift] + kappa",
+    "model10_alpha_shift_kappa_ncp" = "BL + alpha[shift] + kappa~(NCP)",
+    "model05_kappa_kappa_shift" = "BL + kappa + kappa[shift]",
+    "model11_kappa_kappa_shift_ncp" = "BL + kappa + kappa[shift]~(NCP)",
+    "model06_full" = "BL + alpha[shift] + kappa + kappa[shift]",
+    "model12_full_ncp" = "BL + alpha[shift] + kappa + kappa[shift]~(NCP)"
+  )
+
+  # Parameter order and labels
+  param_order <- c("alpha_mu", "beta_mu", "interpretable_alpha_shift_mu", "kappa_mu", "interpretable_kappa_shift_mu")
+
+  param_labels <- c(
+    "alpha_mu" = "alpha[mu]",
+    "beta_mu" = "beta[mu]",
+    "interpretable_alpha_shift_mu" = "alpha[shift]~(mu)",
+    "kappa_mu" = "kappa[mu]",
+    "interpretable_kappa_shift_mu" = "kappa[shift]~(mu)"
+  )
+
+  # 2. Extract Data
+  # ---------------
+  plot_data <- data.frame()
+
+  # Handle input types
+  if (is.data.frame(data_list)) {
+    plot_data <- data_list
+  } else if (is.list(data_list)) {
+    # Check if elements are stanfits or dataframes
+    first_elem <- data_list[[1]]
+    if (inherits(first_elem, "stanfit")) {
+      # Legacy mode: extract from fits
+      message("Note: Extracting data from stanfits (Legacy Mode). For better memory usage, pass extracted data frames.")
+      for (m_name in names(data_list)) {
+        if (!m_name %in% model_order) next
+        chunk <- viz_extract_posterior_data(data_list[[m_name]], m_name)
+        plot_data <- rbind(plot_data, chunk)
+      }
+    } else {
+       # List of data frames
+       plot_data <- do.call(rbind, data_list)
+    }
+  }
+
+  if (nrow(plot_data) == 0) {
+    warning("No matching parameters found for density grid plot.")
+    return(NULL)
+  }
+
+  # 3. Process Factors for Plotting
+
+  # -------------------------------
+
+  # Convert Model to factor with specific order and labels
+  # We subset model_order to only those present in the data to avoid empty levels if not all fitted
+  present_models <- intersect(model_order, unique(plot_data$Model))
+
+  # Create a named vector for labels that matches the factor levels
+  lab_map_model <- model_labels[present_models]
+
+  plot_data$Model_F <- factor(plot_data$Model,
+                              levels = present_models,
+                              labels = lab_map_model)
+
+  # Convert Parameter to factor with specific order and labels
+  plot_data$Parameter_F <- factor(plot_data$Parameter,
+                                  levels = param_order,
+                                  labels = param_labels)
+
+  # Compute Medians for vertical lines
+  medians <- plot_data %>%
+    dplyr::group_by(Model_F, Parameter_F) %>%
+    dplyr::summarise(median_val = median(Value), .groups = "drop")
+
+  # 4. Create Plot
+  # --------------
+
+  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = Value)) +
+    ggplot2::geom_density(fill = "lightblue", alpha = 0.7, color = "navy") +
+    ggplot2::geom_vline(data = medians, ggplot2::aes(xintercept = median_val),
+                        color = "red", linetype = "dashed", linewidth = 0.5) +
+
+    # Faceting
+    ggplot2::facet_grid(Model_F ~ Parameter_F,
+                        scales = "free",     # Allow x/y axes to vary
+                        switch = "y",        # Move model labels to left
+                        labeller = ggplot2::label_parsed) + # Parse plotmath labels
+
+    # Aesthetics
+    ggplot2::labs(
+      title = "Posterior Densities of Key Parameters Across Models",
+      x = "Parameter Value",
+      y = "Density"
+    ) +
+    ggplot2::theme_bw(base_size = 11) +
+    ggplot2::theme(
+      strip.text.y.left = ggplot2::element_text(angle = 0, hjust = 1), # Horizontal row labels
+      strip.background = ggplot2::element_rect(fill = "grey95"),
+      axis.text.y = ggplot2::element_blank(), # Hide y-axis ticks/numbers for density
+      axis.ticks.y = ggplot2::element_blank(),
+      panel.grid.minor = ggplot2::element_blank()
+    )
+
+  # 5. Save
+  # -------
+  out_path <- file.path(output_dir, "all_models_posterior_density_grid.png")
+
+  # Calculate height based on number of models (approx 1.5 inch per row)
+  h_val <- max(6, length(present_models) * 1.5)
+
+  ggplot2::ggsave(out_path, plot = p, width = 12, height = h_val, dpi = 300)
+  message("Saved posterior density grid to: ", out_path)
+}
 
 
 # ============================================

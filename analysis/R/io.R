@@ -130,7 +130,7 @@ io_get_model_output_dirs <- function(model_name, timestamp = NULL) {
   # Parameters
   # ----
   # model_name : character
-  #     Name of the model (e.g., "model1_baseline")
+  #     Name of the model (e.g., "model01_baseline")
   # timestamp : character
   #     Timestamp string (e.g., "20231025_120000"). If NULL, generates current time.
   #
