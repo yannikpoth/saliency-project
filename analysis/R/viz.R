@@ -19,8 +19,12 @@ viz_inspection_participant_trials <- function(task_data, output_dir) {
   #
   # Creates a plot for each participant showing reward probabilities for both arms
   # across trials. Trials with salient feedback (condition == 1) are marked with
-  # vertical dashed lines. Actual choices that resulted in salient feedback are
-  # highlighted with points.
+  # vertical dashed lines. Additionally, trial-by-trial outcomes on the chosen arm
+  # are marked:
+  # - Loss: grey
+  # - Non-salient win: white
+  # - Salient win: yellow
+  # Choice 0 events use circles; choice 1 events use squares.
   #
   # Parameters
   # ----
@@ -62,11 +66,25 @@ viz_inspection_participant_trials <- function(task_data, output_dir) {
 
     vline_data <- data.frame(trial = salient_trials)
 
-    # Identify specific choices with salient feedback for points
-    # Choice 0 -> Arm 1 (Reward Prob 1)
-    # Choice 1 -> Arm 2 (Reward Prob 2)
-    salient_choice_0 <- dplyr::filter(subj_data, condition == 1, choice == 0, !is.na(choice))
-    salient_choice_1 <- dplyr::filter(subj_data, condition == 1, choice == 1, !is.na(choice))
+    # Trial-by-trial event markers (chosen option + outcome)
+    event_df <- subj_data %>%
+      dplyr::filter(!is.na(choice) & !is.na(reward)) %>%
+      dplyr::mutate(
+        choice = as.integer(choice),
+        event_type = dplyr::case_when(
+          reward == 1 & condition == 1 ~ "Salient Win",
+          reward == 1 & condition == 0 ~ "Non-Salient Win",
+          reward == 0 ~ "Loss",
+          TRUE ~ NA_character_
+        ),
+        chosen_prob = dplyr::if_else(choice == 0L, reward_prob_1, reward_prob_2),
+        choice_shape = dplyr::case_when(
+          choice == 0L ~ "Stimulus 0",
+          choice == 1L ~ "Stimulus 1",
+          TRUE ~ NA_character_
+        )
+      ) %>%
+      dplyr::filter(!is.na(event_type) & !is.na(chosen_prob) & is.finite(chosen_prob))
 
     # Create plot
     p <- ggplot2::ggplot(subj_data, ggplot2::aes(x = trial)) +
@@ -77,26 +95,49 @@ viz_inspection_participant_trials <- function(task_data, output_dir) {
 
       # Vertical dashed lines for salient feedback trials
       ggplot2::geom_vline(data = vline_data, ggplot2::aes(xintercept = trial),
-                          color = "grey40", linetype = "dashed", linewidth = 0.5, alpha = 0.6) +
+                          color = "#b88600", linetype = "dashed", linewidth = 0.25, alpha = 0.85) +
 
-      # Points for Salient Feedback on Choice 0 (Option A)
-      ggplot2::geom_point(data = salient_choice_0, ggplot2::aes(y = reward_prob_1),
-                          shape = 21, color = "black", fill = "#ffc400", size = 3, stroke = 0.5) +
-
-      # Points for Salient Feedback on Choice 1 (Option B)
-      ggplot2::geom_point(data = salient_choice_1, ggplot2::aes(y = reward_prob_2),
-                          shape = 21, color = "black", fill = "#ffc400", size = 3, stroke = 0.5) +
-
-      # Color scale and labels
+      # Mark trial-by-trial outcomes on the chosen option
+      ggplot2::geom_point(
+        data = event_df,
+        ggplot2::aes(
+          x = trial,
+          y = chosen_prob,
+          fill = event_type,
+          shape = choice_shape
+        ),
+        color = "black",
+        size = 2.2,
+        stroke = 0.35,
+        alpha = 0.95
+      ) +
+      ggplot2::scale_fill_manual(
+        name = "Event type",
+        values = c(
+          "Loss" = "grey70",
+          "Non-Salient Win" = "#a6dba6",
+          "Salient Win" = "#ffc400"
+        )
+      ) +
+      ggplot2::scale_shape_manual(
+        name = "Chosen stimulus",
+        values = c("Stimulus 0" = 21, "Stimulus 1" = 22)
+      ) +
       ggplot2::scale_color_manual(
+        name = NULL,
         values = c("A" = "dodgerblue", "B" = "firebrick"),
         labels = c("A" = "p(Reward | A)", "B" = "p(Reward | B)")
+      ) +
+      ggplot2::guides(
+        # Ensure fill legend uses a fill-capable shape (otherwise it shows as black)
+        fill = ggplot2::guide_legend(override.aes = list(shape = 21, colour = "black")),
+        shape = ggplot2::guide_legend(override.aes = list(fill = "white"))
       ) +
 
       # Axes
       ggplot2::scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
       ggplot2::labs(
-        title = paste("Participant", pid, ": Combined Reward Probabilities & Salient Feedback"),
+        title = paste("Participant", pid, ": Reward Probabilities & Trial-wise Outcomes"),
         y = "p(Reward)",
         x = "Trial"
       ) +
@@ -105,15 +146,11 @@ viz_inspection_participant_trials <- function(task_data, output_dir) {
       ggplot2::theme_bw(base_size = 10) +
       ggplot2::theme(
         plot.title = ggplot2::element_text(face = "bold", hjust = 0.5),
-        legend.position = c(0.98, 0.98),
-        legend.justification = c("right", "top"),
-        legend.title = ggplot2::element_blank(),
-        legend.background = ggplot2::element_rect(
-          color = "black",
-          fill = ggplot2::alpha("white", 0.8),
-          linetype = "solid",
-          linewidth = 0.5
-        )
+        legend.position = "right",
+        legend.title = ggplot2::element_text(size = 9),
+        legend.text = ggplot2::element_text(size = 8),
+        panel.grid.major = ggplot2::element_blank(),
+        panel.grid.minor = ggplot2::element_blank()
       )
 
     # Save plot

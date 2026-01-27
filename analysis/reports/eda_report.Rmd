@@ -1301,7 +1301,6 @@ htmltools::browsable(
       details.eda-participant { border: 1px solid rgba(0,0,0,0.10); border-radius: 8px; padding: 6px 10px; margin: 8px 0; background: rgba(250,250,250,0.7); }
       details.eda-participant summary { cursor: pointer; font-weight: 600; }
       .eda-participant-grid { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 10px; }
-      @media (min-width: 1100px) { .eda-participant-grid { grid-template-columns: 1fr 1fr; } }
       .eda-participant-card { background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 8px; }
       .eda-participant-card .title { font-weight: 600; margin-bottom: 6px; color: rgba(0,0,0,0.75); }
       .eda-participant-card img { width: 100%; height: auto; border-radius: 6px; }
@@ -1322,7 +1321,7 @@ htmltools::browsable(
 )
 ```
 
-## 7.1 Per-participant inspection plots (Reward probabilities + Choice/Reward)
+## 7.1 Per-participant inspection plots (Reward probabilities + trial-wise outcomes)
 
 ```{r appendix-participant-plots, results='asis'}
 if (!is.null(params$cleaning_stats_subj)) {
@@ -1339,13 +1338,8 @@ if (!is.null(params$cleaning_stats_subj)) {
       "analysis", "outputs", "figs", "inspection", "participant_wise",
       "combined_reward_saliency", paste0("combined_reward_probs_subject_", pid, ".png")
     )
-    choice_reward_path <- file.path(
-      "analysis", "outputs", "figs", "inspection", "participant_wise",
-      "choice_reward", paste0("participant_", pid, "_choice_reward_plot.png")
-    )
 
     img1 <- make_img(reward_prob_path)
-    img2 <- make_img(choice_reward_path)
 
     htmltools::tags$details(
       class = "eda-participant",
@@ -1354,13 +1348,8 @@ if (!is.null(params$cleaning_stats_subj)) {
         class = "eda-participant-grid",
         htmltools::tags$div(
           class = "eda-participant-card",
-          htmltools::tags$div(class = "title", "Reward probabilities + salient feedback"),
+          htmltools::tags$div(class = "title", "Reward probabilities + trial-wise outcomes"),
           if (!is.null(img1)) htmltools::tags$img(src = img1) else htmltools::tags$div("Plot not found.")
-        ),
-        htmltools::tags$div(
-          class = "eda-participant-card",
-          htmltools::tags$div(class = "title", "Choices + rewards (valid trials)"),
-          if (!is.null(img2)) htmltools::tags$img(src = img2) else htmltools::tags$div("Plot not found.")
         )
       )
     )

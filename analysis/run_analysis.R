@@ -103,7 +103,6 @@ if (RUN_EDA) {
   # Generate participant inspection plots (data inspection)
   # This creates plots in analysis/outputs/figs/inspection/participant_wise
   viz_inspection_participant_trials(data_proc$task, "analysis/outputs/figs")
-  viz_inspection_participant_choice_reward(data_proc$task, "analysis/outputs/figs")
 
   # 3. Generate EDA Report
   message("Generating EDA Report...")
