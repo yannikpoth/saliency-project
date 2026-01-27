@@ -12,6 +12,15 @@ params:
   stim_pref_agg: NA
   stim_pref_subj: NA
   stim_pref_test: NA
+  rt_summary_agg: NA
+  rt_summary_subj: NA
+  rt_over_bins: NA
+  rt_by_condition_summary: NA
+  rt_by_condition_data: NA
+  accuracy_agg: NA
+  accuracy_subj: NA
+  accuracy_test: NA
+  accuracy_over_bins: NA
 ---
 
 ```{r setup, include=FALSE}
@@ -22,7 +31,6 @@ library(dplyr)
 library(ggplot2)
 library(scales)
 library(htmltools)
-library(plotly)
 ```
 
 # 1. Data Cleaning Statistics
@@ -131,9 +139,9 @@ if (!is.null(params$stim_pref_subj)) {
 if (!is.null(params$stim_pref_subj)) {
   subj <- params$stim_pref_subj
 
-  .make_pref_plotly <- function(df, prop_col, stim_label, fill_col, choice_val) {
+  .make_pref_plot <- function(df, prop_col, stim_label, fill_col) {
     #####
-    # Create a subject-level preference histogram plot (counts) as Plotly widget
+    # Create a subject-level preference histogram plot (counts)
     #
     # Parameters
     # ----
@@ -145,86 +153,83 @@ if (!is.null(params$stim_pref_subj)) {
     #     Label used in the plot title (e.g., "Stimulus 0")
     # fill_col : character
     #     Fill color used for the histogram
-    # choice_val : integer
-    #     Choice value used in axis label (0 or 1)
     #
     # Returns
     # ----
-    # plotly htmlwidget
-    #     Histogram widget with MathJax-rendered axis titles
+    # ggplot
+    #     Histogram plot with participant counts on y-axis
     #####
     x <- df[[prop_col]]
     m <- mean(x, na.rm = TRUE)
-    mean_txt <- paste0("Mean: ", scales::percent(m, accuracy = 0.1))
 
-    plotly::plot_ly(
-      x = x,
-      type = "histogram",
-      xbins = list(start = 0.25, end = 0.75, size = 0.05),
-      marker = list(color = fill_col, line = list(color = "black", width = 1)),
-      opacity = 0.85,
-      hovertemplate = "p=%{x:.0%}<br>N=%{y}<extra></extra>"
-    ) %>%
-      plotly::layout(
-        title = list(text = paste0("Subject-Level Preference for ", stim_label), font = list(size = 20)),
-        bargap = 0.05,
-        xaxis = list(
-          title = paste0("$p(\\\\mathrm{choice}=", choice_val, ")$"),
-          tickformat = ".0%",
-          range = c(0.25, 0.75),
-          tickvals = seq(0.25, 0.75, by = 0.10)
-        ),
-        yaxis = list(
-          title = "$N$",
-          rangemode = "tozero"
-        ),
-        font = list(size = 16),
-        margin = list(l = 70, r = 20, t = 60, b = 70),
-        shapes = list(
-          list(
-            type = "line",
-            x0 = 0.5, x1 = 0.5,
-            y0 = 0, y1 = 1, yref = "paper",
-            line = list(color = "rgba(60,60,60,0.85)", dash = "dot", width = 2)
-          ),
-          list(
-            type = "line",
-            x0 = m, x1 = m,
-            y0 = 0, y1 = 1, yref = "paper",
-            line = list(color = "rgba(20,20,20,0.95)", dash = "dash", width = 2)
-          )
-        ),
-        annotations = list(
-          list(
-            x = min(0.74, m + 0.01),
-            y = 1,
-            yref = "paper",
-            xref = "x",
-            text = mean_txt,
-            showarrow = FALSE,
-            xanchor = "left",
-            yanchor = "top",
-            font = list(color = "rgba(20,20,20,0.95)", size = 16)
-          )
-        )
-      ) %>%
-      plotly::config(displayModeBar = FALSE)
+    ggplot(df, aes(x = .data[[prop_col]])) +
+      geom_histogram(
+        aes(y = after_stat(count)),
+        binwidth = 0.05,
+        fill = fill_col,
+        color = "black",
+        alpha = 0.85,
+        boundary = 0
+      ) +
+      geom_vline(xintercept = 0.5, linetype = "dotted", color = "grey30", linewidth = 0.9) +
+      geom_vline(xintercept = m, color = "grey10", linetype = "dashed", linewidth = 1.1) +
+      annotate(
+        "text",
+        x = min(0.74, m + 0.01),
+        y = Inf,
+        label = paste0("Mean: ", scales::percent(m, accuracy = 0.1)),
+        hjust = 0,
+        vjust = 1.6,
+        color = "grey10",
+        size = 6
+      ) +
+      scale_x_continuous(
+        labels = scales::percent_format(accuracy = 1),
+        limits = c(0.25, 0.75),
+        breaks = seq(0.25, 0.75, by = 0.10)
+      ) +
+      labs(
+        title = paste0("Subject-Level Preference for ", stim_label),
+        x = if (prop_col == "prop_choice_0") expression(italic(p)(choice == 0)) else expression(italic(p)(choice == 1)),
+        y = expression(italic(N))
+      ) +
+      theme_minimal(base_size = 18) +
+      theme(
+        plot.title = element_text(face = "bold", size = 20),
+        axis.title.x = element_text(size = 18),
+        axis.title.y = element_text(size = 18),
+        axis.text.x = element_text(size = 16),
+        axis.text.y = element_text(size = 16)
+      )
   }
 
-  p0 <- .make_pref_plotly(subj, "prop_choice_0", "Stimulus 0", "dodgerblue", choice_val = 0)
-  p1 <- .make_pref_plotly(subj, "prop_choice_1", "Stimulus 1", "firebrick", choice_val = 1)
+  p0 <- .make_pref_plot(subj, "prop_choice_0", "Stimulus 0", "dodgerblue")
+  p1 <- .make_pref_plot(subj, "prop_choice_1", "Stimulus 1", "firebrick")
+
+  # Render as a simple carousel (robust in HTML via embedded image URIs)
+  tmp0 <- tempfile(fileext = ".png")
+  tmp1 <- tempfile(fileext = ".png")
+  ggsave(tmp0, plot = p0, width = 8, height = 5, dpi = 160)
+  ggsave(tmp1, plot = p1, width = 8, height = 5, dpi = 160)
+
+  img0 <- knitr::image_uri(tmp0)
+  img1 <- knitr::image_uri(tmp1)
 
   carousel_id <- paste0("stim-pref-carousel-", as.integer(stats::runif(1, 1, 1e9)))
 
   htmltools::browsable(
     htmltools::tagList(
       htmltools::tags$style(htmltools::HTML("
-        .eda-carousel { max-width: 980px; margin: 8px 0 6px 0; }
-        .eda-carousel .row { display: flex; align-items: center; gap: 14px; }
-        .eda-carousel .viewport { flex: 1 1 auto; min-width: 0; }
+        .eda-carousel-wrap { max-width: 920px; margin: 8px 0 18px 0; }
+        .eda-carousel {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+        }
+        .eda-carousel .viewport { flex: 1 1 auto; }
         .eda-carousel .slide { display: none; }
         .eda-carousel .slide.active { display: block; }
-        .eda-carousel .html-widget { width: 100% !important; }
+        .eda-carousel img { width: 100%; height: auto; border-radius: 6px; }
         .eda-carousel button.nav {
           width: 44px; height: 44px; border-radius: 22px;
           border: 1px solid rgba(0,0,0,0.25);
@@ -237,14 +242,14 @@ if (!is.null(params$stim_pref_subj)) {
           flex: 0 0 auto;
         }
         .eda-carousel button.nav:hover { background: rgba(255,255,255,0.95); }
-        .eda-carousel .caption { text-align: center; margin-top: 8px; color: rgba(0,0,0,0.65); font-size: 14px; }
+        .eda-carousel .caption { text-align: center; margin-top: 6px; color: rgba(0,0,0,0.65); font-size: 14px; }
       ")),
       htmltools::tags$div(
-        id = carousel_id,
-        class = "eda-carousel",
-        `data-idx` = "0",
+        class = "eda-carousel-wrap",
         htmltools::tags$div(
-          class = "row",
+          id = carousel_id,
+          class = "eda-carousel",
+          `data-idx` = "0",
           htmltools::tags$button(
             class = "nav prev",
             type = "button",
@@ -253,8 +258,8 @@ if (!is.null(params$stim_pref_subj)) {
           ),
           htmltools::tags$div(
             class = "viewport",
-            htmltools::tags$div(class = "slide active", htmltools::as.tags(p0)),
-            htmltools::tags$div(class = "slide", htmltools::as.tags(p1))
+            htmltools::tags$div(class = "slide active", htmltools::tags$img(src = img0, alt = "Stimulus 0 preference plot")),
+            htmltools::tags$div(class = "slide", htmltools::tags$img(src = img1, alt = "Stimulus 1 preference plot"))
           ),
           htmltools::tags$button(
             class = "nav next",
@@ -274,18 +279,6 @@ if (!is.null(params$stim_pref_subj)) {
           const i = ((idx % n) + n) % n;
           slides.forEach((s, k) => s.classList.toggle('active', k === i));
           el.setAttribute('data-idx', String(i));
-          // If Plotly widgets are inside, trigger a resize after showing
-          setTimeout(function () {
-            try { window.dispatchEvent(new Event('resize')); } catch (e) {}
-            try {
-              if (window.Plotly) {
-                const widgets = el.querySelectorAll('.slide.active .html-widget');
-                widgets.forEach(function (w) {
-                  try { Plotly.Plots.resize(w); } catch (e) {}
-                });
-              }
-            } catch (e) {}
-          }, 60);
         }
         function edaCarouselStep(id, delta) {
           const el = document.getElementById(id);
@@ -327,5 +320,556 @@ if (!is.null(params$stim_pref_test)) {
     row_spec(0, bold = FALSE)
 } else {
   print("No stimulus preference test results provided.")
+}
+```
+
+# 3. Reaction Time Analysis
+
+This section summarizes reaction times (RTs) on valid-choice trials. We visualize the overall distribution, RT changes over time, and differences by feedback condition. We also inspect subject-level RT distributions and flag participants with unusually frequent very fast responses.
+
+## 3.1 Aggregate
+
+```{r rt-agg-table}
+if (!is.null(params$rt_summary_agg)) {
+  params$rt_summary_agg %>%
+    kable(digits = 3, caption = "Table 3.1: Aggregate Reaction Time Summary") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+} else {
+  print("No aggregate RT summary provided.")
+}
+```
+
+```{r rt-agg-plots, results='asis'}
+if (!is.null(params$rt_by_condition_data) && !is.null(params$rt_over_bins)) {
+  # Use the same fast-RT threshold as cleaning statistics (run_analysis.R)
+  fast_rt_threshold <- 0.2
+
+  # ---- Plot 1: Overall RT distribution ----
+  p_dist <- ggplot(params$rt_by_condition_data, aes(x = reaction_time)) +
+    geom_histogram(aes(y = after_stat(density)), binwidth = 0.05, fill = "cornflowerblue", color = "black", alpha = 0.7, boundary = 0) +
+    geom_density(alpha = 0.2, fill = "lightblue") +
+    geom_vline(xintercept = fast_rt_threshold, color = "red", linetype = "dashed", linewidth = 1) +
+    annotate(
+      "text",
+      x = fast_rt_threshold + 0.05,
+      y = Inf,
+      label = paste0("Fast RT threshold (", fast_rt_threshold * 1000, "ms)"),
+      hjust = 0,
+      vjust = 1.5,
+      color = "red",
+      size = 4
+    ) +
+    scale_x_continuous(limits = c(0, NA), expand = expansion(mult = c(0.01, 0.05))) +
+    labs(
+      title = "Overall Distribution of Reaction Times (Valid Trials)",
+      subtitle = paste0("N = ", nrow(params$rt_by_condition_data), " trials. Red line at ", fast_rt_threshold * 1000, "ms."),
+      x = "Reaction Time (seconds)",
+      y = "Density"
+    ) +
+    theme_minimal(base_size = 14) +
+    theme(plot.title = element_text(face = "bold"), plot.subtitle = element_text(color = "grey30"))
+
+  tmp_dist <- tempfile(fileext = ".png")
+  ggsave(tmp_dist, plot = p_dist, width = 8, height = 5, dpi = 170)
+
+  # ---- Plot 2: Median RT over trial bins ----
+  bins <- params$rt_over_bins
+  p_bins <- ggplot(bins, aes(x = trial_bin, y = median_rt)) +
+    geom_line(color = "blue", linewidth = 1) +
+    geom_point(color = "blue", size = 2) +
+    geom_errorbar(aes(ymin = median_rt - sem_rt, ymax = median_rt + sem_rt), width = 0.2, color = "blue", alpha = 0.5) +
+    labs(
+      title = "Median Reaction Time Over Trial Bins",
+      x = "Trial Bin (10 bins)",
+      y = "Median Reaction Time (s) ± SEM"
+    ) +
+    scale_x_continuous(breaks = sort(unique(bins$trial_bin))) +
+    theme_minimal(base_size = 14) +
+    theme(plot.title = element_text(face = "bold"))
+
+  tmp_bins <- tempfile(fileext = ".png")
+  ggsave(tmp_bins, plot = p_bins, width = 8, height = 5, dpi = 170)
+
+  # ---- Plot 3: RT by feedback condition ----
+  cond_df <- params$rt_by_condition_data %>%
+    dplyr::filter(condition_label %in% c("Salient", "Non-Salient"))
+
+  if (nrow(cond_df) > 5) {
+    y_lo <- as.numeric(stats::quantile(cond_df$reaction_time, 0.01, na.rm = TRUE))
+    y_hi <- as.numeric(stats::quantile(cond_df$reaction_time, 0.99, na.rm = TRUE))
+  } else {
+    y_lo <- min(cond_df$reaction_time, na.rm = TRUE)
+    y_hi <- max(cond_df$reaction_time, na.rm = TRUE)
+  }
+
+  p_cond <- ggplot(cond_df, aes(x = condition_label, y = reaction_time, fill = condition_label)) +
+    geom_boxplot(alpha = 0.7, outlier.shape = NA) +
+    geom_jitter(width = 0.1, alpha = 0.06, size = 0.6) +
+    scale_y_continuous(limits = c(y_lo, y_hi)) +
+    scale_fill_manual(values = c("Non-Salient" = "grey70", "Salient" = "gold")) +
+    labs(
+      title = "Reaction Time by Feedback Condition",
+      subtitle = "Valid-choice trials only. Boxes show median & IQR; y-axis trimmed to 1st–99th percentile.",
+      x = "Feedback Condition",
+      y = "Reaction Time (s)"
+    ) +
+    theme_minimal(base_size = 14) +
+    theme(legend.position = "none", plot.title = element_text(face = "bold"))
+
+  tmp_cond <- tempfile(fileext = ".png")
+  ggsave(tmp_cond, plot = p_cond, width = 7, height = 5, dpi = 170)
+
+  # ---- Embed all 3 plots as robust HTML images ----
+  img_dist <- knitr::image_uri(tmp_dist)
+  img_bins <- knitr::image_uri(tmp_bins)
+  img_cond <- knitr::image_uri(tmp_cond)
+
+  htmltools::browsable(
+    htmltools::tagList(
+      htmltools::tags$div(
+        style = "max-width: 920px; margin: 8px 0 18px 0;",
+        htmltools::tags$img(src = img_dist, style = "width: 100%; height: auto; border-radius: 6px;")
+      ),
+      htmltools::tags$div(
+        style = "max-width: 920px; margin: 8px 0 18px 0;",
+        htmltools::tags$img(src = img_bins, style = "width: 100%; height: auto; border-radius: 6px;")
+      ),
+      htmltools::tags$div(
+        style = "max-width: 820px; margin: 8px 0 18px 0;",
+        htmltools::tags$img(src = img_cond, style = "width: 100%; height: auto; border-radius: 6px;")
+      )
+    )
+  )
+}
+```
+
+```{r rt-by-condition-table}
+if (!is.null(params$rt_by_condition_summary)) {
+  params$rt_by_condition_summary %>%
+    dplyr::rename(
+      "Condition" = condition_label,
+      "N Trials" = n,
+      "Mean RT (s)" = mean_rt,
+      "Median RT (s)" = median_rt,
+      "SD RT (s)" = sd_rt,
+      "Min RT (s)" = min_rt,
+      "Max RT (s)" = max_rt
+    ) %>%
+    kable(digits = 3, caption = "Table 3.2: Reaction Time Summary by Feedback Condition") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+} else {
+  print("No RT-by-condition summary provided.")
+}
+```
+
+## 3.2 Subject-Level
+
+```{r rt-subj-table}
+if (!is.null(params$rt_summary_subj)) {
+  params$rt_summary_subj %>%
+    dplyr::rename(
+      "Subject ID" = participant_id,
+      "N Trials (RT available)" = n_trials_rt,
+      "Mean RT (s)" = mean_rt,
+      "Median RT (s)" = median_rt,
+      "SD RT (s)" = sd_rt,
+      "Min RT (s)" = min_rt,
+      "Max RT (s)" = max_rt,
+      "N Fast RT" = n_fast_rt,
+      "Fast RT (%)" = percent_fast_rt
+    ) %>%
+    kable(digits = 3, caption = "Table 3.3: Subject-Level Reaction Time Summary") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+    scroll_box(height = "500px")
+} else {
+  print("No subject-level RT summary provided.")
+}
+```
+
+```{r rt-subj-hist, results='asis'}
+if (!is.null(params$rt_by_condition_data) && !is.null(params$rt_summary_subj)) {
+  fast_rt_threshold <- 0.2
+
+  rt_trials <- params$rt_by_condition_data %>%
+    dplyr::select(participant_id, reaction_time) %>%
+    dplyr::filter(!is.na(reaction_time))
+
+  # Highlight participants with >5% very fast RTs (legacy heuristic)
+  rt_annot <- params$rt_summary_subj %>%
+    dplyr::mutate(
+      label_text = paste0(round(percent_fast_rt, 1), "%"),
+      highlight_flag = percent_fast_rt > 5
+    ) %>%
+    dplyr::select(participant_id, label_text, highlight_flag)
+
+  rt_plot_df <- rt_trials %>%
+    dplyr::left_join(rt_annot, by = "participant_id")
+
+  n_subjects <- dplyr::n_distinct(rt_plot_df$participant_id)
+  ncol <- 4
+  nrow <- max(1, ceiling(n_subjects / ncol))
+  plot_height <- max(7, 3 * nrow)
+
+  p_subj <- ggplot(rt_plot_df, aes(x = reaction_time)) +
+    geom_histogram(
+      aes(y = after_stat(density), fill = highlight_flag),
+      binwidth = 0.1,
+      boundary = 0,
+      color = "black",
+      alpha = 0.7
+    ) +
+    scale_fill_manual(values = c("TRUE" = "firebrick", "FALSE" = "grey80"), guide = "none") +
+    geom_vline(xintercept = fast_rt_threshold, linetype = "dashed", color = "darkred", linewidth = 0.6) +
+    geom_text(
+      data = rt_annot,
+      aes(x = Inf, y = Inf, label = label_text),
+      hjust = 1.1, vjust = 1.5, size = 5, alpha = 0.7, fontface = "bold", color = "black",
+      inherit.aes = FALSE
+    ) +
+    facet_wrap(~ participant_id, scales = "free_y", ncol = ncol) +
+    scale_x_continuous(
+      limits = c(0, max(rt_plot_df$reaction_time, na.rm = TRUE) * 1.05),
+      expand = c(0.01, 0.01)
+    ) +
+    scale_y_continuous(expand = expansion(mult = c(0.01, 0.15))) +
+    labs(
+      title = "Individual Reaction Time Distributions",
+      subtitle = "Dashed line: 200ms threshold. Highlighted: >5% trials < 200ms.",
+      x = "Reaction Time (s)",
+      y = "Density"
+    ) +
+    theme_bw(base_size = 10) +
+    theme(
+      plot.title = element_text(face = "bold", size = rel(1.2)),
+      plot.subtitle = element_text(color = "grey30"),
+      strip.background = element_blank(),
+      strip.text = element_text(face = "bold")
+    )
+
+  tmp_subj <- tempfile(fileext = ".png")
+  ggsave(tmp_subj, plot = p_subj, width = 12, height = plot_height, units = "in", dpi = 170)
+  img_subj <- knitr::image_uri(tmp_subj)
+
+  htmltools::browsable(
+    htmltools::tags$div(
+      style = "max-width: 1080px; margin: 10px 0 18px 0;",
+      htmltools::tags$img(src = img_subj, style = "width: 100%; height: auto; border-radius: 6px;")
+    )
+  )
+}
+```
+
+# 4. Accuracy
+
+Accuracy is defined as choosing the option with the higher reward probability on a given trial (ties contribute 0.5). Missed trials and trials with missing reward probabilities are excluded.
+
+## 4.1 Aggregate
+
+```{r accuracy-agg-table}
+if (!is.null(params$accuracy_agg)) {
+  params$accuracy_agg %>%
+    kable(digits = 3, caption = "Table 4.1: Aggregate Accuracy Summary") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+} else {
+  print("No aggregate accuracy summary provided.")
+}
+```
+
+```{r accuracy-ttest}
+if (!is.null(params$accuracy_test)) {
+  params$accuracy_test %>%
+    dplyr::transmute(
+      `\\(\\mathbf{N}\\)` = n,
+      `\\(\\mathbf{\\mu_0}\\)` = mu,
+      `\\(\\mathbf{\\bar{a}}\\)` = mean_accuracy,
+      `\\(\\mathbf{SD}\\)` = sd_accuracy,
+      `\\(\\mathbf{\\Delta}\\)` = mean_diff_from_mu,
+      `\\(\\mathbf{t}\\)` = t,
+      `\\(\\mathbf{df}\\)` = df,
+      `\\(\\mathbf{p}\\)` = p_value,
+      `\\(\\mathbf{CI}_{95\\%}^{low}\\)` = conf_low,
+      `\\(\\mathbf{CI}_{95\\%}^{high}\\)` = conf_high
+    ) %>%
+    kable(
+      digits = 4,
+      escape = FALSE,
+      caption = "Table 4.2: One-sample t-test of Subject-Level Accuracy vs Chance (0.5)"
+    ) %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+    row_spec(0, bold = FALSE)
+} else {
+  print("No accuracy t-test results provided.")
+}
+```
+
+```{r accuracy-agg-plots, results='asis'}
+if (!is.null(params$accuracy_subj) && !is.null(params$accuracy_test) && !is.null(params$accuracy_over_bins)) {
+  subj <- params$accuracy_subj
+  tt <- params$accuracy_test
+  bins <- params$accuracy_over_bins
+
+  p_value_formatted <- if (is.finite(tt$p_value)) {
+    scales::pvalue(tt$p_value, accuracy = .001, add_p = TRUE)
+  } else {
+    NA_character_
+  }
+
+  t_test_caption <- if (!is.finite(tt$p_value)) {
+    "Not enough data for t-test (N < 2)"
+  } else {
+    paste0(
+      "One-sample t-test vs 0.5: t(",
+      round(tt$df, 1),
+      ") = ",
+      round(tt$t, 2),
+      ", ",
+      p_value_formatted
+    )
+  }
+
+  overall_mean_accuracy <- mean(subj$mean_accuracy, na.rm = TRUE)
+
+  # Boxplot of overall accuracy with (optional) significance bracket
+  significance_y_start <- 0.5
+  significance_y_end <- overall_mean_accuracy
+  significance_x <- 1.3
+  annotation_y <- (significance_y_start + significance_y_end) / 2
+
+  p_box <- ggplot(subj, aes(x = factor(1), y = mean_accuracy)) +
+    geom_hline(yintercept = 0.5, linetype = "dashed", color = "grey50") +
+    geom_jitter(width = 0.2, height = 0, size = 1.5, alpha = 0.5) +
+    geom_boxplot(width = 0.35, outlier.shape = NA, fill = "grey80", alpha = 0.6) +
+    stat_summary(fun = mean, geom = "point", shape = 18, size = 3, color = "firebrick") +
+    {if (is.finite(tt$p_value) && tt$p_value < 0.05)
+      list(
+        geom_segment(aes(x = significance_x, xend = significance_x, y = significance_y_start, yend = significance_y_end),
+                     color = "black", linewidth = 0.5),
+        geom_segment(aes(x = significance_x - 0.02, xend = significance_x, y = significance_y_end, yend = significance_y_end),
+                     color = "black", linewidth = 0.5),
+        geom_segment(aes(x = significance_x - 0.02, xend = significance_x, y = significance_y_start, yend = significance_y_start),
+                     color = "black", linewidth = 0.5),
+        annotate("text", x = significance_x + 0.05, y = annotation_y,
+                 label = p_value_formatted, hjust = 0, size = 4)
+      )
+    } +
+    labs(
+      title = "Overall Accuracy Distribution",
+      y = "Accuracy",
+      x = NULL,
+      caption = t_test_caption
+    ) +
+    scale_y_continuous(
+      limits = c(min(0.3, min(subj$mean_accuracy, na.rm = TRUE) * 0.9),
+                 max(0.75, max(subj$mean_accuracy, na.rm = TRUE) * 1.05)),
+      breaks = seq(0.3, 0.8, by = 0.1)
+    ) +
+    scale_x_discrete(expand = expansion(add = c(0.6, 0.6))) +
+    theme_classic(base_size = 13) +
+    theme(
+      plot.title = element_text(face = "bold", hjust = 0.5),
+      axis.text.x = element_blank(),
+      axis.ticks.x = element_blank()
+    )
+
+  tmp_box <- tempfile(fileext = ".png")
+  ggsave(tmp_box, plot = p_box, width = 6, height = 5, dpi = 170)
+
+  # Learning curve
+  p_curve <- ggplot(bins, aes(x = trial_bin, y = mean_accuracy_across_subjects)) +
+    geom_ribbon(
+      aes(ymin = mean_accuracy_across_subjects - sem_accuracy, ymax = mean_accuracy_across_subjects + sem_accuracy),
+      fill = "dodgerblue",
+      alpha = 0.2
+    ) +
+    geom_line(color = "dodgerblue", linewidth = 1) +
+    geom_point(color = "dodgerblue", size = 2.5) +
+    geom_hline(yintercept = 0.5, linetype = "dashed", color = "grey30") +
+    labs(
+      title = "Learning Curve: Accuracy Over Trial Bins",
+      x = "Trial Bin",
+      y = "Mean Accuracy",
+      caption = "Shaded area represents SEM."
+    ) +
+    scale_x_continuous(breaks = sort(unique(bins$trial_bin))) +
+    theme_bw(base_size = 14) +
+    theme(plot.title = element_text(face = "bold", hjust = 0.5))
+
+  tmp_curve <- tempfile(fileext = ".png")
+  ggsave(tmp_curve, plot = p_curve, width = 8, height = 5, dpi = 170)
+
+  img_box <- knitr::image_uri(tmp_box)
+  img_curve <- knitr::image_uri(tmp_curve)
+
+  htmltools::browsable(
+    htmltools::tagList(
+      htmltools::tags$div(
+        style = "max-width: 720px; margin: 8px 0 18px 0;",
+        htmltools::tags$img(src = img_box, style = "width: 100%; height: auto; border-radius: 6px;")
+      ),
+      htmltools::tags$div(
+        style = "max-width: 920px; margin: 8px 0 18px 0;",
+        htmltools::tags$img(src = img_curve, style = "width: 100%; height: auto; border-radius: 6px;")
+      )
+    )
+  )
+}
+```
+
+## 4.2 Subject-Level
+
+```{r accuracy-subj-table}
+if (!is.null(params$accuracy_subj)) {
+  params$accuracy_subj %>%
+    dplyr::rename(
+      "Subject ID" = participant_id,
+      "Mean Accuracy" = mean_accuracy,
+      "N Valid Trials" = n_valid_trials
+    ) %>%
+    kable(digits = 3, caption = "Table 4.3: Subject-Level Accuracy") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+    scroll_box(height = "500px")
+} else {
+  print("No subject-level accuracy provided.")
+}
+```
+
+```{r accuracy-subj-plots, results='asis'}
+if (!is.null(params$accuracy_subj)) {
+  subj <- params$accuracy_subj %>%
+    dplyr::mutate(below_chance = mean_accuracy < 0.5) %>%
+    dplyr::arrange(mean_accuracy)
+
+  n_subjects_accuracy <- nrow(subj)
+
+  p_sorted <- ggplot(
+    subj,
+    aes(x = mean_accuracy, y = reorder(participant_id, mean_accuracy), color = below_chance)
+  ) +
+    geom_point(size = 2.5, alpha = 0.85) +
+    geom_vline(xintercept = 0.5, linetype = "dashed", color = "red", linewidth = 0.7) +
+    geom_text(
+      aes(label = sprintf("%.3f", mean_accuracy), hjust = ifelse(mean_accuracy < 0.5, 1.3, -0.3)),
+      vjust = 0.5,
+      size = 3,
+      check_overlap = TRUE
+    ) +
+    scale_color_manual(values = c("TRUE" = "firebrick", "FALSE" = "black"), name = "Below Chance (0.5)") +
+    labs(
+      title = "Individual Participant Accuracy (Sorted by Accuracy)",
+      subtitle = paste0("Each point represents a participant (N=", n_subjects_accuracy, ")."),
+      x = "Mean Accuracy",
+      y = "Participant ID"
+    ) +
+    theme_bw(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", hjust = 0.5),
+      legend.position = "top",
+      plot.subtitle = element_text(hjust = 0.5, color = "grey30")
+    )
+
+  p_by_id <- ggplot(
+    subj,
+    aes(x = mean_accuracy, y = factor(participant_id, levels = rev(sort(unique(participant_id)))), color = below_chance)
+  ) +
+    geom_point(size = 2.5, alpha = 0.85) +
+    geom_vline(xintercept = 0.5, linetype = "dashed", color = "red", linewidth = 0.7) +
+    geom_text(
+      aes(label = sprintf("%.3f", mean_accuracy), hjust = ifelse(mean_accuracy < 0.5, 1.3, -0.3)),
+      vjust = 0.5,
+      size = 3,
+      check_overlap = TRUE
+    ) +
+    scale_color_manual(values = c("TRUE" = "firebrick", "FALSE" = "black"), name = "Below Chance (0.5)") +
+    labs(
+      title = "Individual Participant Accuracy (Sorted by ID)",
+      subtitle = paste0("Each point represents a participant (N=", n_subjects_accuracy, ")."),
+      x = "Mean Accuracy",
+      y = "Participant ID"
+    ) +
+    theme_bw(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold", hjust = 0.5),
+      legend.position = "top",
+      plot.subtitle = element_text(hjust = 0.5, color = "grey30")
+    )
+
+  tmp0 <- tempfile(fileext = ".png")
+  tmp1 <- tempfile(fileext = ".png")
+  ggsave(tmp0, plot = p_sorted, width = 8, height = max(4, 0.25 * n_subjects_accuracy), dpi = 160, limitsize = FALSE)
+  ggsave(tmp1, plot = p_by_id, width = 8, height = max(4, 0.25 * n_subjects_accuracy), dpi = 160, limitsize = FALSE)
+
+  img0 <- knitr::image_uri(tmp0)
+  img1 <- knitr::image_uri(tmp1)
+
+  carousel_id <- paste0("accuracy-carousel-", as.integer(stats::runif(1, 1, 1e9)))
+
+  htmltools::browsable(
+    htmltools::tagList(
+      htmltools::tags$style(htmltools::HTML("
+        .eda-carousel-wrap { max-width: 920px; margin: 8px 0 18px 0; }
+        .eda-carousel { display: flex; align-items: center; gap: 10px; }
+        .eda-carousel .viewport { flex: 1 1 auto; }
+        .eda-carousel .slide { display: none; }
+        .eda-carousel .slide.active { display: block; }
+        .eda-carousel img { width: 100%; height: auto; border-radius: 6px; }
+        .eda-carousel button.nav {
+          width: 44px; height: 44px; border-radius: 22px;
+          border: 1px solid rgba(0,0,0,0.25);
+          background: rgba(255,255,255,0.85);
+          color: rgba(0,0,0,0.75);
+          font-size: 26px; line-height: 40px;
+          cursor: pointer;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+          user-select: none;
+          flex: 0 0 auto;
+        }
+        .eda-carousel button.nav:hover { background: rgba(255,255,255,0.95); }
+        .eda-carousel .caption { text-align: center; margin-top: 6px; color: rgba(0,0,0,0.65); font-size: 14px; }
+      ")),
+      htmltools::tags$div(
+        class = "eda-carousel-wrap",
+        htmltools::tags$div(
+          id = carousel_id,
+          class = "eda-carousel",
+          `data-idx` = "0",
+          htmltools::tags$button(
+            class = "nav prev",
+            type = "button",
+            onclick = sprintf("edaCarouselStep('%s', -1)", carousel_id),
+            htmltools::HTML("&#10094;")
+          ),
+          htmltools::tags$div(
+            class = "viewport",
+            htmltools::tags$div(class = "slide active", htmltools::tags$img(src = img0, alt = "Accuracy plot (sorted by accuracy)")),
+            htmltools::tags$div(class = "slide", htmltools::tags$img(src = img1, alt = "Accuracy plot (sorted by ID)"))
+          ),
+          htmltools::tags$button(
+            class = "nav next",
+            type = "button",
+            onclick = sprintf("edaCarouselStep('%s', 1)", carousel_id),
+            htmltools::HTML("&#10095;")
+          )
+        ),
+        htmltools::tags$div(class = "caption", "Use arrows to switch: Sorted by Accuracy ↔ Sorted by ID")
+      ),
+      htmltools::tags$script(htmltools::HTML("
+        function edaCarouselShow(id, idx) {
+          const el = document.getElementById(id);
+          if (!el) return;
+          const slides = el.querySelectorAll('.slide');
+          const n = slides.length;
+          const i = ((idx % n) + n) % n;
+          slides.forEach((s, k) => s.classList.toggle('active', k === i));
+          el.setAttribute('data-idx', String(i));
+        }
+        function edaCarouselStep(id, delta) {
+          const el = document.getElementById(id);
+          if (!el) return;
+          const cur = parseInt(el.getAttribute('data-idx') || '0', 10);
+          edaCarouselShow(id, cur + delta);
+        }
+      "))
+    )
+  )
 }
 ```

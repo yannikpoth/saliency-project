@@ -3,8 +3,8 @@
 # ============================================
 
 # ========== Configuration ==========
-RUN_EDA <- FALSE       # Run exploratory data analysis and generate report
-RUN_MODELS <- TRUE  # Run reinforcement learning model fitting
+RUN_EDA <- TRUE       # Run exploratory data analysis and generate report
+RUN_MODELS <- FALSE  # Run reinforcement learning model fitting
 # ===================================
 
 # ========== Modeling Policy ==========
@@ -24,8 +24,8 @@ library(here)         # path management (optional but recommended)
 
 # Configure rstan for optimal performance
 options(mc.cores = parallel::detectCores())
-# Cache compiled Stan models (separate from caching fitted objects)
-rstan_options(auto_write = TRUE)
+# Note: auto_write disabled - we handle caching via rl_load_or_fit()
+# rstan_options(auto_write = TRUE)
 
 # Source Sub-scripts
 source("analysis/R/io.R")
@@ -67,13 +67,19 @@ if (RUN_EDA) {
   stim_pref_agg <- compute_stimulus_preference_aggregate(data_proc$task)
   stim_pref_test <- test_stimulus_preference(stim_pref_subj, mu = 0.5)
 
-  # TODO: Compute further behavioral metrics
-  # choice_metrics <- compute_choice_metrics(data_proc$task)
-  # rt_metrics <- compute_rt_metrics(data_proc$task)
-  # accuracy_metrics <- compute_accuracy_metrics(data_proc$task)
-  # wsls_metrics <- compute_wsls_metrics(data_proc$task)
-  # prp_metrics <- compute_prp_metrics(data_proc$task)
-  # quest_metrics <- compute_questionnaire_metrics(data_proc)
+  # Reaction time (RT) metrics
+  message("Computing reaction time (RT) summaries...")
+  rt_summary_subj <- compute_rt_subject_summary(data_proc$task, fast_rt_threshold = 0.2)
+  rt_summary_agg <- compute_rt_aggregate_summary(data_proc$task, fast_rt_threshold = 0.2)
+  rt_over_bins <- compute_rt_over_trial_bins(data_proc$task, n_bins = 10, fast_rt_threshold = 0.2)
+  rt_by_condition <- compute_rt_by_condition(data_proc$task)
+
+  # Accuracy metrics
+  message("Computing accuracy summaries...")
+  accuracy_subj <- compute_accuracy_subject(data_proc$task)
+  accuracy_agg <- compute_accuracy_aggregate(accuracy_subj)
+  accuracy_test <- test_accuracy_vs_chance(accuracy_subj, mu = 0.5)
+  accuracy_over_bins <- compute_accuracy_over_trial_bins(data_proc$task, n_bins = 20)
 
 
 
@@ -98,7 +104,16 @@ if (RUN_EDA) {
       cleaning_stats_subj = cleaning_stats_subj,
       stim_pref_agg = stim_pref_agg,
       stim_pref_subj = stim_pref_subj,
-      stim_pref_test = stim_pref_test
+      stim_pref_test = stim_pref_test,
+      rt_summary_agg = rt_summary_agg,
+      rt_summary_subj = rt_summary_subj,
+      rt_over_bins = rt_over_bins,
+      rt_by_condition_summary = rt_by_condition$summary,
+      rt_by_condition_data = rt_by_condition$data,
+      accuracy_agg = accuracy_agg,
+      accuracy_subj = accuracy_subj,
+      accuracy_test = accuracy_test,
+      accuracy_over_bins = accuracy_over_bins
     ),
     quiet = FALSE
   )
@@ -137,24 +152,66 @@ if (RUN_MODELS) {
   # Timestamp for this analysis run (used for output directories and fit files)
   TIMESTAMP <- format(Sys.time(), "%Y%m%d_%H%M%S")
 
-  # Fit + diagnostics + LOO + posterior extraction (optionally parallel across models)
-  pipeline <- rl_run_models_pipeline(
-    model_names = model_names,
-    stan_data = stan_data,
-    timestamp = TIMESTAMP,
-    fit_dir = "analysis/outputs/fits",
-    force_refit = FALSE,
-    chains = STAN_CHAINS,
-    iter = STAN_ITER,
-    warmup = STAN_WARMUP,
-    reserve_cores = 1,
-    verbose = TRUE
-  )
-
   # Container for LOO objects (lightweight), diagnostics, and posterior samples
-  loo_objects <- lapply(pipeline$results, function(x) x$loo)
-  diagnostic_summaries <- lapply(pipeline$results, function(x) x$diagnostics_summary)
-  posterior_samples_list <- lapply(pipeline$results, function(x) x$posterior_data)
+  loo_objects <- list()
+  diagnostic_summaries <- list()
+  posterior_samples_list <- list()
+
+  # Process models sequentially to save memory
+  message(sprintf("\n=== Processing %d models sequentially ===", length(model_names)))
+
+  for (model_name in model_names) {
+    message(sprintf("\n--- Processing model: %s ---", model_name))
+
+    # 1. Fit or Load Model
+    fit <- rl_load_or_fit(
+      model_name,
+      stan_data = stan_data,
+      fit_dir = "analysis/outputs/fits",
+      force_refit = FALSE,
+      timestamp = TIMESTAMP,
+      chains = STAN_CHAINS,
+      iter = STAN_ITER,
+      warmup = STAN_WARMUP,
+      verbose = TRUE
+    )
+
+    # 2. Run Diagnostics
+    # Outputs are saved to analysis/outputs/[figs|tables]/[model]_[timestamp]/diagnostics/
+    results <- diagnostics_run_all(
+      fit = fit,
+      model_name = model_name,
+      timestamp = TIMESTAMP
+    )
+    diagnostic_summaries[[model_name]] <- results$summary
+
+    # 3. Compute LOO (for model comparison later)
+    # We extract log_lik and compute loo here, then discard fit
+    message("Computing LOO...")
+
+    # Check if log_lik exists (handling vector/array parameters which appear as log_lik[1], etc.)
+    has_log_lik <- any(grepl("^log_lik", names(fit)))
+
+    if (has_log_lik) {
+      tryCatch({
+        log_lik <- loo::extract_log_lik(fit, parameter_name = "log_lik")
+        loo_objects[[model_name]] <- loo::loo(log_lik)
+      }, error = function(e) {
+        warning(sprintf("Failed to compute LOO for %s: %s", model_name, e$message))
+      })
+    } else {
+        warning(sprintf("Model %s does not contain log_lik parameter. Skipping LOO.", model_name))
+    }
+
+    # 4. Extract posterior samples for density grid plot
+    # Uses helper from viz.R to get lightweight data frame
+    posterior_samples_list[[model_name]] <- viz_extract_posterior_data(fit, model_name)
+
+    # 5. Clean up
+    rm(fit)
+    if (exists("log_lik")) rm(log_lik)
+    gc() # Force garbage collection
+  }
 
   # Combine diagnostic summaries into one table for comparison
   all_diagnostics <- dplyr::bind_rows(diagnostic_summaries)
