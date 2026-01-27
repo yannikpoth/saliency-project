@@ -29,6 +29,8 @@ params:
   prp_by_outcome_subj: NA
   wsls_test: NA
   prp_test: NA
+  reward_rate_subj: NA
+  win_stay_overall_subj: NA
 ---
 
 ```{r setup, include=FALSE}
@@ -1276,5 +1278,158 @@ if (!is.null(params$prp_by_outcome_subj)) {
       )
     )
   }
+}
+```
+
+# 7. Appendix (Participant-level Diagnostics)
+
+This appendix embeds participant-level inspection outputs directly into this HTML file for deep-dive exploration. Use the buttons below to expand/collapse all participants.
+
+```{r appendix-controls, results='asis'}
+htmltools::browsable(
+  htmltools::tagList(
+    htmltools::tags$style(htmltools::HTML("
+      .eda-appendix-controls { display: flex; gap: 8px; margin: 10px 0 12px 0; }
+      .eda-appendix-controls button {
+        border: 1px solid rgba(0,0,0,0.25);
+        background: rgba(255,255,255,0.9);
+        padding: 6px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      .eda-appendix-controls button:hover { background: rgba(255,255,255,1); }
+      details.eda-participant { border: 1px solid rgba(0,0,0,0.10); border-radius: 8px; padding: 6px 10px; margin: 8px 0; background: rgba(250,250,250,0.7); }
+      details.eda-participant summary { cursor: pointer; font-weight: 600; }
+      .eda-participant-grid { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 10px; }
+      @media (min-width: 1100px) { .eda-participant-grid { grid-template-columns: 1fr 1fr; } }
+      .eda-participant-card { background: white; border: 1px solid rgba(0,0,0,0.08); border-radius: 8px; padding: 8px; }
+      .eda-participant-card .title { font-weight: 600; margin-bottom: 6px; color: rgba(0,0,0,0.75); }
+      .eda-participant-card img { width: 100%; height: auto; border-radius: 6px; }
+      .eda-wide-scroll { overflow-x: auto; width: 100%; padding-bottom: 8px; }
+    ")),
+    htmltools::tags$div(
+      class = "eda-appendix-controls",
+      htmltools::tags$button(type = "button", onclick = "edaSetAllDetails(true)", "Expand all"),
+      htmltools::tags$button(type = "button", onclick = "edaSetAllDetails(false)", "Collapse all")
+    ),
+    htmltools::tags$script(htmltools::HTML("
+      function edaSetAllDetails(open) {
+        const els = document.querySelectorAll('details.eda-participant');
+        els.forEach(d => { d.open = open; });
+      }
+    "))
+  )
+)
+```
+
+## 7.1 Per-participant inspection plots (Reward probabilities + Choice/Reward)
+
+```{r appendix-participant-plots, results='asis'}
+if (!is.null(params$cleaning_stats_subj)) {
+  pids <- as.character(params$cleaning_stats_subj$participant_id)
+  pids <- pids[order(as.integer(pids))]
+
+  make_img <- function(path) {
+    if (!file.exists(path)) return(NULL)
+    knitr::image_uri(path)
+  }
+
+  blocks <- lapply(pids, function(pid) {
+    reward_prob_path <- file.path(
+      "analysis", "outputs", "figs", "inspection", "participant_wise",
+      "combined_reward_saliency", paste0("combined_reward_probs_subject_", pid, ".png")
+    )
+    choice_reward_path <- file.path(
+      "analysis", "outputs", "figs", "inspection", "participant_wise",
+      "choice_reward", paste0("participant_", pid, "_choice_reward_plot.png")
+    )
+
+    img1 <- make_img(reward_prob_path)
+    img2 <- make_img(choice_reward_path)
+
+    htmltools::tags$details(
+      class = "eda-participant",
+      htmltools::tags$summary(paste0("Participant ", pid)),
+      htmltools::tags$div(
+        class = "eda-participant-grid",
+        htmltools::tags$div(
+          class = "eda-participant-card",
+          htmltools::tags$div(class = "title", "Reward probabilities + salient feedback"),
+          if (!is.null(img1)) htmltools::tags$img(src = img1) else htmltools::tags$div("Plot not found.")
+        ),
+        htmltools::tags$div(
+          class = "eda-participant-card",
+          htmltools::tags$div(class = "title", "Choices + rewards (valid trials)"),
+          if (!is.null(img2)) htmltools::tags$img(src = img2) else htmltools::tags$div("Plot not found.")
+        )
+      )
+    )
+  })
+
+  htmltools::browsable(htmltools::tagList(blocks))
+}
+```
+
+## 7.2 Participant behavioral summary (full table)
+
+This table is intentionally wide (participants as columns). Use horizontal scrolling to inspect all participants.
+
+```{r appendix-summary-table, results='asis'}
+if (!is.null(params$stim_pref_subj) &&
+    !is.null(params$accuracy_subj) &&
+    !is.null(params$reward_rate_subj) &&
+    !is.null(params$win_stay_overall_subj)) {
+
+  stim <- params$stim_pref_subj %>%
+    dplyr::select(participant_id, prop_choice_0, prop_choice_1)
+  acc <- params$accuracy_subj %>%
+    dplyr::select(participant_id, mean_accuracy)
+  rr <- params$reward_rate_subj %>%
+    dplyr::select(participant_id, reward_rate)
+  ws <- params$win_stay_overall_subj %>%
+    dplyr::select(participant_id, win_stay_prob)
+
+  metrics_long <- stim %>%
+    dplyr::left_join(rr, by = "participant_id") %>%
+    dplyr::left_join(acc, by = "participant_id") %>%
+    dplyr::left_join(ws, by = "participant_id") %>%
+    dplyr::mutate(participant_id = as.character(participant_id)) %>%
+    tidyr::pivot_longer(
+      cols = c(prop_choice_0, prop_choice_1, reward_rate, mean_accuracy, win_stay_prob),
+      names_to = "Metric",
+      values_to = "Value"
+    ) %>%
+    dplyr::mutate(
+      Metric = dplyr::recode(
+        Metric,
+        prop_choice_0 = "Prop. Stimulus 0",
+        prop_choice_1 = "Prop. Stimulus 1",
+        reward_rate = "Reward Rate",
+        mean_accuracy = "Accuracy",
+        win_stay_prob = "Win-Stay Prob"
+      )
+    )
+
+  wide <- metrics_long %>%
+    tidyr::pivot_wider(names_from = participant_id, values_from = Value) %>%
+    dplyr::arrange(factor(Metric, levels = c("Prop. Stimulus 0", "Prop. Stimulus 1", "Reward Rate", "Accuracy", "Win-Stay Prob")))
+
+  tbl <- wide %>%
+    kable(
+      digits = 3,
+      caption = "Table 7.1: Participant Behavioral Summary (Wide)"
+    ) %>%
+    kable_styling(
+      bootstrap_options = c("striped", "hover", "condensed"),
+      full_width = TRUE,
+      font_size = 12
+    )
+
+  htmltools::browsable(
+    htmltools::tags$div(
+      class = "eda-wide-scroll",
+      htmltools::HTML(as.character(tbl))
+    )
+  )
 }
 ```

@@ -94,6 +94,8 @@ if (RUN_EDA) {
   prp_by_outcome_subj <- compute_prp_median_by_outcome_subject(data_proc$task)
   wsls_test <- test_wsls_salient_vs_nonsalient(wsls_by_outcome_subj)
   prp_test <- test_prp_salient_vs_nonsalient(prp_by_outcome_subj)
+  reward_rate_subj <- compute_reward_rate_subject(data_proc$task)
+  win_stay_overall_subj <- compute_win_stay_overall_subject(wsls_by_outcome_subj)
 
 
 
@@ -135,7 +137,9 @@ if (RUN_EDA) {
       wsls_by_outcome_subj = wsls_by_outcome_subj,
       prp_by_outcome_subj = prp_by_outcome_subj,
       wsls_test = wsls_test,
-      prp_test = prp_test
+      prp_test = prp_test,
+      reward_rate_subj = reward_rate_subj,
+      win_stay_overall_subj = win_stay_overall_subj
     ),
     quiet = FALSE
   )

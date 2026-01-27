@@ -1007,3 +1007,66 @@ test_prp_salient_vs_nonsalient <- function(prp_by_outcome_subj) {
     b = "Post-Non-Salient Win"
   )
 }
+
+compute_reward_rate_subject <- function(task_data) {
+  #####
+  # Compute subject-level reward rate (mean reward on valid trials)
+  #
+  # Parameters
+  # ----
+  # task_data : tibble
+  #     Cleaned task data containing: participant_id, choice, reward
+  #
+  # Returns
+  # ----
+  # tibble
+  #     Subject-level summary with columns: participant_id, n_valid_trials, reward_rate
+  #####
+  stopifnot("task_data must have participant_id" = "participant_id" %in% names(task_data))
+  stopifnot("task_data must have choice" = "choice" %in% names(task_data))
+  stopifnot("task_data must have reward" = "reward" %in% names(task_data))
+
+  task_data %>%
+    dplyr::filter(!is.na(choice) & !is.na(reward)) %>%
+    dplyr::group_by(participant_id) %>%
+    dplyr::summarise(
+      n_valid_trials = dplyr::n(),
+      reward_rate = mean(reward == 1, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    dplyr::arrange(participant_id)
+}
+
+compute_win_stay_overall_subject <- function(wsls_by_outcome_subj) {
+  #####
+  # Compute overall win-stay probability (collapsed across win types)
+  #
+  # Computes P(stay | rewarded on t-1) per subject by pooling Salient Win and
+  # Non-Salient Win opportunities from compute_wsls_by_outcome_subject().
+  #
+  # Parameters
+  # ----
+  # wsls_by_outcome_subj : tibble
+  #     Output from compute_wsls_by_outcome_subject()
+  #
+  # Returns
+  # ----
+  # tibble
+  #     Subject-level summary with columns: participant_id, n_opportunities_win, n_stay_win, win_stay_prob
+  #####
+  stopifnot("wsls must have participant_id" = "participant_id" %in% names(wsls_by_outcome_subj))
+  stopifnot("wsls must have outcome_type" = "outcome_type" %in% names(wsls_by_outcome_subj))
+  stopifnot("wsls must have n_opportunities" = "n_opportunities" %in% names(wsls_by_outcome_subj))
+  stopifnot("wsls must have n_stay" = "n_stay" %in% names(wsls_by_outcome_subj))
+
+  wsls_by_outcome_subj %>%
+    dplyr::filter(outcome_type %in% c("Salient Win", "Non-Salient Win")) %>%
+    dplyr::group_by(participant_id) %>%
+    dplyr::summarise(
+      n_opportunities_win = sum(n_opportunities, na.rm = TRUE),
+      n_stay_win = sum(n_stay, na.rm = TRUE),
+      win_stay_prob = ifelse(n_opportunities_win > 0, n_stay_win / n_opportunities_win, NA_real_),
+      .groups = "drop"
+    ) %>%
+    dplyr::arrange(participant_id)
+}
