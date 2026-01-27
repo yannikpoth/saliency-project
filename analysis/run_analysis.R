@@ -67,6 +67,13 @@ if (RUN_EDA) {
   stim_pref_agg <- compute_stimulus_preference_aggregate(data_proc$task)
   stim_pref_test <- test_stimulus_preference(stim_pref_subj, mu = 0.5)
 
+  # Reward, feedback, and learning checks
+  message("Computing reward/feedback summaries...")
+  reward_rate_by_choice <- compute_reward_rate_by_choice(data_proc$task)
+  reward_rate_over_bins <- compute_reward_rate_over_trial_bins(data_proc$task, n_bins = 10)
+  feedback_condition_overall <- compute_feedback_condition_proportions(data_proc$task, valid_only = TRUE)
+  feedback_condition_by_subject <- compute_feedback_condition_proportions_by_subject(data_proc$task, valid_only = TRUE)
+
   # Reaction time (RT) metrics
   message("Computing reaction time (RT) summaries...")
   rt_summary_subj <- compute_rt_subject_summary(data_proc$task, fast_rt_threshold = 0.2)
@@ -80,6 +87,13 @@ if (RUN_EDA) {
   accuracy_agg <- compute_accuracy_aggregate(accuracy_subj)
   accuracy_test <- test_accuracy_vs_chance(accuracy_subj, mu = 0.5)
   accuracy_over_bins <- compute_accuracy_over_trial_bins(data_proc$task, n_bins = 20)
+
+  # Choice strategies
+  message("Computing choice strategy metrics (WSLS, PRP)...")
+  wsls_by_outcome_subj <- compute_wsls_by_outcome_subject(data_proc$task)
+  prp_by_outcome_subj <- compute_prp_median_by_outcome_subject(data_proc$task)
+  wsls_test <- test_wsls_salient_vs_nonsalient(wsls_by_outcome_subj)
+  prp_test <- test_prp_salient_vs_nonsalient(prp_by_outcome_subj)
 
 
 
@@ -105,6 +119,10 @@ if (RUN_EDA) {
       stim_pref_agg = stim_pref_agg,
       stim_pref_subj = stim_pref_subj,
       stim_pref_test = stim_pref_test,
+      reward_rate_by_choice = reward_rate_by_choice,
+      reward_rate_over_bins = reward_rate_over_bins,
+      feedback_condition_overall = feedback_condition_overall,
+      feedback_condition_by_subject = feedback_condition_by_subject,
       rt_summary_agg = rt_summary_agg,
       rt_summary_subj = rt_summary_subj,
       rt_over_bins = rt_over_bins,
@@ -113,7 +131,11 @@ if (RUN_EDA) {
       accuracy_agg = accuracy_agg,
       accuracy_subj = accuracy_subj,
       accuracy_test = accuracy_test,
-      accuracy_over_bins = accuracy_over_bins
+      accuracy_over_bins = accuracy_over_bins,
+      wsls_by_outcome_subj = wsls_by_outcome_subj,
+      prp_by_outcome_subj = prp_by_outcome_subj,
+      wsls_test = wsls_test,
+      prp_test = prp_test
     ),
     quiet = FALSE
   )
