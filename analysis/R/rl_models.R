@@ -124,6 +124,342 @@ rl_select_models_interactive <- function(model_names) {
   selected_models
 }
 
+# ========== System Resources & Parallel Planning ==========
+
+rl_detect_system_resources <- function(reserve_cores = 1) {
+  #####
+  # Detect system resources relevant for Stan parallelization
+  #
+  # Keeps this intentionally simple and dependency-free:
+  # - detects logical and (if available) physical CPU cores
+  # - derives a conservative "available cores" budget by reserving cores for OS/IO
+  #
+  # Parameters
+  # ----
+  # reserve_cores : integer
+  #     Number of CPU cores to reserve for OS/background tasks (default: 1)
+  #
+  # Returns
+  # ----
+  # list
+  #     Named list with:
+  #     - os_type : character ("unix" or "windows")
+  #     - cores_logical : integer
+  #     - cores_physical : integer or NA
+  #     - cores_available : integer (>= 1)
+  #####
+  reserve_cores <- as.integer(reserve_cores)
+  if (is.na(reserve_cores) || reserve_cores < 0) reserve_cores <- 1
+
+  os_type <- .Platform$OS.type
+
+  cores_logical <- parallel::detectCores(logical = TRUE)
+  if (is.na(cores_logical) || cores_logical < 1) cores_logical <- 1L
+
+  cores_physical <- tryCatch(
+    parallel::detectCores(logical = FALSE),
+    error = function(e) NA_integer_
+  )
+
+  if (is.na(cores_physical) || cores_physical < 1) cores_physical <- NA_integer_
+
+  cores_available <- max(1L, as.integer(cores_logical - reserve_cores))
+
+  list(
+    os_type = os_type,
+    cores_logical = as.integer(cores_logical),
+    cores_physical = ifelse(is.na(cores_physical), NA_integer_, as.integer(cores_physical)),
+    cores_available = as.integer(cores_available)
+  )
+}
+
+
+rl_plan_model_parallelism <- function(n_models,
+                                      chains_per_model = 2,
+                                      reserve_cores = 1) {
+  #####
+  # Plan parallel model fitting given CPU resources and chains-per-model policy
+  #
+  # Goal: use available CPU cores efficiently without nested parallel oversubscription.
+  # We treat "chains_per_model" as the number of cores needed per concurrently fitted model
+  # (because rstan parallelizes chains using option(mc.cores)).
+  #
+  # On Unix (macOS/Linux), we can run multiple models in parallel via fork.
+  # On Windows, we fall back to sequential execution (keep-it-simple).
+  #
+  # Parameters
+  # ----
+  # n_models : integer
+  #     Number of models to process
+  # chains_per_model : integer
+  #     Chains per model (also used as cores per model) (default: 2)
+  # reserve_cores : integer
+  #     Reserved cores for OS/background tasks (default: 1)
+  #
+  # Returns
+  # ----
+  # list
+  #     Named list with:
+  #     - resources: output of rl_detect_system_resources()
+  #     - workers: integer, number of models to run concurrently
+  #     - use_parallel: logical
+  #     - reason: character, short explanation
+  #####
+  n_models <- as.integer(n_models)
+  if (is.na(n_models) || n_models < 1) n_models <- 1L
+
+  chains_per_model <- as.integer(chains_per_model)
+  if (is.na(chains_per_model) || chains_per_model < 1) chains_per_model <- 1L
+
+  resources <- rl_detect_system_resources(reserve_cores = reserve_cores)
+
+  if (resources$os_type == "windows") {
+    return(list(
+      resources = resources,
+      workers = 1L,
+      use_parallel = FALSE,
+      reason = "Windows detected; using sequential execution (keep-it-simple)."
+    ))
+  }
+
+  # Each concurrently fitted model is assumed to consume chains_per_model cores.
+  workers <- floor(resources$cores_available / chains_per_model)
+  workers <- max(1L, min(as.integer(workers), n_models))
+
+  use_parallel <- workers > 1L
+  reason <- if (use_parallel) {
+    sprintf(
+      "Using %d parallel workers (≈ %d cores total via %d chains/model).",
+      workers, workers * chains_per_model, chains_per_model
+    )
+  } else {
+    "Using sequential execution (insufficient CPU headroom for parallel workers)."
+  }
+
+  list(
+    resources = resources,
+    workers = as.integer(workers),
+    use_parallel = use_parallel,
+    reason = reason
+  )
+}
+
+
+rl_process_single_model <- function(model_name,
+                                    stan_data,
+                                    timestamp,
+                                    fit_dir,
+                                    force_refit,
+                                    chains,
+                                    iter,
+                                    warmup,
+                                    verbose = TRUE) {
+  #####
+  # Fit/load one model and compute all downstream artifacts for comparison
+  #
+  # This wraps the per-model part of `analysis/run_analysis.R` into a single
+  # function so we can (optionally) parallelize across models.
+  #
+  # Side effects:
+  # - saves fit object via rl_load_or_fit()
+  # - runs diagnostics_run_all() (saves figs/tables to disk)
+  #
+  # Parameters
+  # ----
+  # model_name : character
+  #     Stan model name (without .stan extension)
+  # stan_data : list
+  #     Stan data list from prepare_stan_data()
+  # timestamp : character
+  #     Timestamp for output directories / cached fit file names
+  # fit_dir : character
+  #     Directory for cached fits
+  # force_refit : logical
+  #     If TRUE, refit even if cached fit exists
+  # chains : integer
+  #     Chains per model
+  # iter : integer
+  #     Iterations per chain
+  # warmup : integer
+  #     Warmup iterations per chain
+  # verbose : logical
+  #     Print progress messages
+  #
+  # Returns
+  # ----
+  # list
+  #     Named list with:
+  #     - model_name : character
+  #     - loo : psis_loo or NULL
+  #     - diagnostics_summary : tibble/data.frame or NULL
+  #     - posterior_data : tibble/data.frame or NULL
+  #####
+  if (verbose) message(sprintf("\n--- Processing model: %s ---", model_name))
+
+  # Ensure rstan uses one core per chain (parallel chains within this worker).
+  options(mc.cores = as.integer(chains))
+
+  fit <- rl_load_or_fit(
+    model_name,
+    stan_data = stan_data,
+    fit_dir = fit_dir,
+    force_refit = force_refit,
+    timestamp = timestamp,
+    chains = chains,
+    iter = iter,
+    warmup = warmup,
+    verbose = verbose
+  )
+
+  # Diagnostics (writes outputs to disk)
+  diag_summary <- NULL
+  if (exists("diagnostics_run_all", mode = "function")) {
+    results <- diagnostics_run_all(fit = fit, model_name = model_name, timestamp = timestamp)
+    diag_summary <- results$summary
+  } else {
+    warning("diagnostics_run_all() not found. Did you source analysis/R/diagnostics.R?")
+  }
+
+  # LOO (keep lightweight)
+  loo_obj <- NULL
+  has_log_lik <- any(grepl("^log_lik", names(fit)))
+  if (has_log_lik) {
+    loo_obj <- tryCatch({
+      log_lik <- loo::extract_log_lik(fit, parameter_name = "log_lik")
+      loo::loo(log_lik)
+    }, error = function(e) {
+      warning(sprintf("Failed to compute LOO for %s: %s", model_name, e$message))
+      NULL
+    })
+  } else {
+    warning(sprintf("Model %s does not contain log_lik parameter. Skipping LOO.", model_name))
+  }
+
+  # Posterior samples (for density grid)
+  posterior_df <- NULL
+  if (exists("viz_extract_posterior_data", mode = "function")) {
+    posterior_df <- viz_extract_posterior_data(fit, model_name)
+  } else {
+    warning("viz_extract_posterior_data() not found. Did you source analysis/R/viz.R?")
+  }
+
+  rm(fit)
+  gc()
+
+  list(
+    model_name = model_name,
+    loo = loo_obj,
+    diagnostics_summary = diag_summary,
+    posterior_data = posterior_df
+  )
+}
+
+
+rl_run_models_pipeline <- function(model_names,
+                                  stan_data,
+                                  timestamp,
+                                  fit_dir = "analysis/outputs/fits",
+                                  force_refit = FALSE,
+                                  chains = 2,
+                                  iter = 10000,
+                                  warmup = 8000,
+                                  reserve_cores = 1,
+                                  verbose = TRUE) {
+  #####
+  # Run model fitting + diagnostics + LOO + posterior extraction (optionally parallel)
+  #
+  # Uses a simple, conservative parallelization strategy:
+  # - parallelize across models
+  # - within each model, allow rstan to parallelize chains via option(mc.cores)
+  # - cap the number of concurrent models so total cores ≈ workers * chains
+  #
+  # Parameters
+  # ----
+  # model_names : character vector
+  #     Models to process
+  # stan_data : list
+  #     Stan data list from prepare_stan_data()
+  # timestamp : character
+  #     Timestamp for output directories / cached fit file names
+  # fit_dir : character
+  #     Directory for cached fits (default: "analysis/outputs/fits")
+  # force_refit : logical
+  #     If TRUE, refit even if cached fits exist (default: FALSE)
+  # chains : integer
+  #     Chains per model (default: 2)
+  # iter : integer
+  #     Iterations per chain (default: 10000)
+  # warmup : integer
+  #     Warmup iterations per chain (default: 8000)
+  # reserve_cores : integer
+  #     Reserved cores for OS/background tasks (default: 1)
+  # verbose : logical
+  #     Print progress messages (default: TRUE)
+  #
+  # Returns
+  # ----
+  # list
+  #     Named list with:
+  #     - plan : list, parallel plan from rl_plan_model_parallelism()
+  #     - results : list, per-model result objects
+  #####
+  if (length(model_names) == 0) {
+    warning("No models provided to rl_run_models_pipeline().")
+    return(list(plan = NULL, results = list()))
+  }
+
+  plan <- rl_plan_model_parallelism(
+    n_models = length(model_names),
+    chains_per_model = chains,
+    reserve_cores = reserve_cores
+  )
+
+  if (verbose) {
+    message("\n=== Stan resource plan ===")
+    message(sprintf("  OS type: %s", plan$resources$os_type))
+    message(sprintf("  Logical cores: %d", plan$resources$cores_logical))
+    if (!is.na(plan$resources$cores_physical)) {
+      message(sprintf("  Physical cores: %d", plan$resources$cores_physical))
+    }
+    message(sprintf("  Reserved cores: %d", as.integer(reserve_cores)))
+    message(sprintf("  Available cores: %d", plan$resources$cores_available))
+    message(sprintf("  Chains/model: %d", as.integer(chains)))
+    message(sprintf("  Parallel workers: %d", plan$workers))
+    message(sprintf("  Decision: %s", plan$reason))
+  }
+
+  worker_fun <- function(m) {
+    rl_process_single_model(
+      model_name = m,
+      stan_data = stan_data,
+      timestamp = timestamp,
+      fit_dir = fit_dir,
+      force_refit = force_refit,
+      chains = chains,
+      iter = iter,
+      warmup = warmup,
+      verbose = verbose
+    )
+  }
+
+  if (plan$use_parallel) {
+    results <- parallel::mclapply(
+      model_names,
+      worker_fun,
+      mc.cores = plan$workers
+    )
+  } else {
+    results <- lapply(model_names, worker_fun)
+  }
+
+  names(results) <- model_names
+
+  list(
+    plan = plan,
+    results = results
+  )
+}
+
 
 # ========== Core Fitting Functions ==========
 

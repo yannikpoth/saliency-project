@@ -3,7 +3,7 @@
 # ============================================
 
 # ========== Configuration ==========
-RUN_EDA <- TRUE       # Run exploratory data analysis and generate report
+RUN_EDA <- FALSE       # Run exploratory data analysis and generate report
 RUN_MODELS <- TRUE  # Run reinforcement learning model fitting
 # ===================================
 
@@ -24,8 +24,8 @@ library(here)         # path management (optional but recommended)
 
 # Configure rstan for optimal performance
 options(mc.cores = parallel::detectCores())
-# Note: auto_write disabled - we handle caching via rl_load_or_fit()
-# rstan_options(auto_write = TRUE)
+# Cache compiled Stan models (separate from caching fitted objects)
+rstan_options(auto_write = TRUE)
 
 # Source Sub-scripts
 source("analysis/R/io.R")
@@ -61,7 +61,13 @@ if (RUN_EDA) {
   cleaning_stats_subj <- compute_cleaning_stats_subject(data_proc$task)
   cleaning_stats_agg <- compute_cleaning_stats_aggregate(cleaning_stats_subj)
 
-  # TODO: Compute behavioral metrics
+  # Stimulus preference (choice proportions)
+  message("Computing stimulus preference (choice proportions)...")
+  stim_pref_subj <- compute_stimulus_preference_subject(data_proc$task)
+  stim_pref_agg <- compute_stimulus_preference_aggregate(data_proc$task)
+  stim_pref_test <- test_stimulus_preference(stim_pref_subj, mu = 0.5)
+
+  # TODO: Compute further behavioral metrics
   # choice_metrics <- compute_choice_metrics(data_proc$task)
   # rt_metrics <- compute_rt_metrics(data_proc$task)
   # accuracy_metrics <- compute_accuracy_metrics(data_proc$task)
@@ -89,7 +95,10 @@ if (RUN_EDA) {
     output_dir = "analysis/outputs/reports",
     params = list(
       cleaning_stats_agg = cleaning_stats_agg,
-      cleaning_stats_subj = cleaning_stats_subj
+      cleaning_stats_subj = cleaning_stats_subj,
+      stim_pref_agg = stim_pref_agg,
+      stim_pref_subj = stim_pref_subj,
+      stim_pref_test = stim_pref_test
     ),
     quiet = FALSE
   )
@@ -128,66 +137,24 @@ if (RUN_MODELS) {
   # Timestamp for this analysis run (used for output directories and fit files)
   TIMESTAMP <- format(Sys.time(), "%Y%m%d_%H%M%S")
 
+  # Fit + diagnostics + LOO + posterior extraction (optionally parallel across models)
+  pipeline <- rl_run_models_pipeline(
+    model_names = model_names,
+    stan_data = stan_data,
+    timestamp = TIMESTAMP,
+    fit_dir = "analysis/outputs/fits",
+    force_refit = FALSE,
+    chains = STAN_CHAINS,
+    iter = STAN_ITER,
+    warmup = STAN_WARMUP,
+    reserve_cores = 1,
+    verbose = TRUE
+  )
+
   # Container for LOO objects (lightweight), diagnostics, and posterior samples
-  loo_objects <- list()
-  diagnostic_summaries <- list()
-  posterior_samples_list <- list()
-
-  # Process models sequentially to save memory
-  message(sprintf("\n=== Processing %d models sequentially ===", length(model_names)))
-
-  for (model_name in model_names) {
-    message(sprintf("\n--- Processing model: %s ---", model_name))
-
-    # 1. Fit or Load Model
-    fit <- rl_load_or_fit(
-      model_name,
-      stan_data = stan_data,
-      fit_dir = "analysis/outputs/fits",
-      force_refit = FALSE,
-      timestamp = TIMESTAMP,
-      chains = STAN_CHAINS,
-      iter = STAN_ITER,
-      warmup = STAN_WARMUP,
-      verbose = TRUE
-    )
-
-    # 2. Run Diagnostics
-    # Outputs are saved to analysis/outputs/[figs|tables]/[model]_[timestamp]/diagnostics/
-    results <- diagnostics_run_all(
-      fit = fit,
-      model_name = model_name,
-      timestamp = TIMESTAMP
-    )
-    diagnostic_summaries[[model_name]] <- results$summary
-
-    # 3. Compute LOO (for model comparison later)
-    # We extract log_lik and compute loo here, then discard fit
-    message("Computing LOO...")
-
-    # Check if log_lik exists (handling vector/array parameters which appear as log_lik[1], etc.)
-    has_log_lik <- any(grepl("^log_lik", names(fit)))
-
-    if (has_log_lik) {
-      tryCatch({
-        log_lik <- loo::extract_log_lik(fit, parameter_name = "log_lik")
-        loo_objects[[model_name]] <- loo::loo(log_lik)
-      }, error = function(e) {
-        warning(sprintf("Failed to compute LOO for %s: %s", model_name, e$message))
-      })
-    } else {
-        warning(sprintf("Model %s does not contain log_lik parameter. Skipping LOO.", model_name))
-    }
-
-    # 4. Extract posterior samples for density grid plot
-    # Uses helper from viz.R to get lightweight data frame
-    posterior_samples_list[[model_name]] <- viz_extract_posterior_data(fit, model_name)
-
-    # 5. Clean up
-    rm(fit)
-    if (exists("log_lik")) rm(log_lik)
-    gc() # Force garbage collection
-  }
+  loo_objects <- lapply(pipeline$results, function(x) x$loo)
+  diagnostic_summaries <- lapply(pipeline$results, function(x) x$diagnostics_summary)
+  posterior_samples_list <- lapply(pipeline$results, function(x) x$posterior_data)
 
   # Combine diagnostic summaries into one table for comparison
   all_diagnostics <- dplyr::bind_rows(diagnostic_summaries)
