@@ -23,7 +23,15 @@ library(loo)          # model comparison
 library(here)         # path management (optional but recommended)
 
 # Configure rstan for optimal performance
-options(mc.cores = parallel::detectCores())
+# NOTE (macOS): fork-based parallelism can crash when ObjC-backed libs are loaded.
+# For robustness, default to single-core sampling on macOS. If you need speed,
+# consider switching to cmdstanr (separate processes) instead of forking.
+sysname <- tryCatch(Sys.info()[["sysname"]], error = function(e) NA_character_)
+if (!is.na(sysname) && sysname == "Darwin") {
+  options(mc.cores = 1)
+} else {
+  options(mc.cores = parallel::detectCores())
+}
 # Note: auto_write disabled - we handle caching via rl_load_or_fit()
 # rstan_options(auto_write = TRUE)
 

@@ -144,6 +144,7 @@ rl_detect_system_resources <- function(reserve_cores = 1) {
   # list
   #     Named list with:
   #     - os_type : character ("unix" or "windows")
+  #     - sysname : character (e.g., "Darwin", "Linux", "Windows")
   #     - cores_logical : integer
   #     - cores_physical : integer or NA
   #     - cores_available : integer (>= 1)
@@ -152,6 +153,8 @@ rl_detect_system_resources <- function(reserve_cores = 1) {
   if (is.na(reserve_cores) || reserve_cores < 0) reserve_cores <- 1
 
   os_type <- .Platform$OS.type
+  sysname <- tryCatch(Sys.info()[["sysname"]], error = function(e) NA_character_)
+  if (is.na(sysname) || !nzchar(sysname)) sysname <- NA_character_
 
   cores_logical <- parallel::detectCores(logical = TRUE)
   if (is.na(cores_logical) || cores_logical < 1) cores_logical <- 1L
@@ -167,6 +170,7 @@ rl_detect_system_resources <- function(reserve_cores = 1) {
 
   list(
     os_type = os_type,
+    sysname = sysname,
     cores_logical = as.integer(cores_logical),
     cores_physical = ifelse(is.na(cores_physical), NA_integer_, as.integer(cores_physical)),
     cores_available = as.integer(cores_available)
@@ -184,7 +188,13 @@ rl_plan_model_parallelism <- function(n_models,
   # We treat "chains_per_model" as the number of cores needed per concurrently fitted model
   # (because rstan parallelizes chains using option(mc.cores)).
   #
-  # On Unix (macOS/Linux), we can run multiple models in parallel via fork.
+  # On Unix, we can *in principle* run multiple models in parallel via fork.
+  #
+  # NOTE (macOS): Fork-based parallelism via parallel::mclapply() is not reliable on
+  # macOS when Objective-C / GUI / plotting-related libraries are initialized (common
+  # with packages like ggplot2/bayesplot). This can crash workers with errors like:
+  # "objc[...] may have been in progress in another thread when fork() was called".
+  # To keep the pipeline robust, we disable model-level fork-parallelism on macOS.
   # On Windows, we fall back to sequential execution (keep-it-simple).
   #
   # Parameters
@@ -219,6 +229,16 @@ rl_plan_model_parallelism <- function(n_models,
       workers = 1L,
       use_parallel = FALSE,
       reason = "Windows detected; using sequential execution (keep-it-simple)."
+    ))
+  }
+
+  # macOS: disable fork-parallel model fitting (see NOTE above).
+  if (!is.na(resources$sysname) && resources$sysname == "Darwin") {
+    return(list(
+      resources = resources,
+      workers = 1L,
+      use_parallel = FALSE,
+      reason = "macOS (Darwin) detected; disabling fork-parallel model fitting for stability."
     ))
   }
 

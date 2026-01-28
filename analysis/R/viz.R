@@ -60,11 +60,10 @@ viz_inspection_participant_trials <- function(task_data, output_dir) {
     # Filter data for current participant
     subj_data <- dplyr::filter(task_data, participant_id == pid)
 
-    # Identify salient feedback trials (condition == 1)
-    salient_subset <- dplyr::filter(subj_data, condition == 1)
-    salient_trials <- unique(salient_subset$trial)
-
-    vline_data <- data.frame(trial = salient_trials)
+    # Anchor y-positions for event lanes
+    # Top lane: Stimulus 0, Bottom lane: Stimulus 1
+    y_anchor_stim0 <- 1.06
+    y_anchor_stim1 <- -0.06
 
     # Trial-by-trial event markers (chosen option + outcome)
     event_df <- subj_data %>%
@@ -77,14 +76,21 @@ viz_inspection_participant_trials <- function(task_data, output_dir) {
           reward == 0 ~ "Loss",
           TRUE ~ NA_character_
         ),
-        chosen_prob = dplyr::if_else(choice == 0L, reward_prob_1, reward_prob_2),
-        choice_shape = dplyr::case_when(
+        anchor_y = dplyr::case_when(
+          choice == 0L ~ y_anchor_stim0,
+          choice == 1L ~ y_anchor_stim1,
+          TRUE ~ NA_real_
+        ),
+        chosen_stimulus = dplyr::case_when(
           choice == 0L ~ "Stimulus 0",
           choice == 1L ~ "Stimulus 1",
           TRUE ~ NA_character_
         )
       ) %>%
-      dplyr::filter(!is.na(event_type) & !is.na(chosen_prob) & is.finite(chosen_prob))
+      dplyr::filter(!is.na(event_type) & is.finite(anchor_y))
+
+    win_df <- dplyr::filter(event_df, event_type %in% c("Non-Salient Win", "Salient Win"))
+    loss_df <- dplyr::filter(event_df, event_type == "Loss")
 
     # Create plot
     p <- ggplot2::ggplot(subj_data, ggplot2::aes(x = trial)) +
@@ -93,22 +99,31 @@ viz_inspection_participant_trials <- function(task_data, output_dir) {
       # Line for Option B (Reward Prob 2)
       ggplot2::geom_line(ggplot2::aes(y = reward_prob_2, color = "B"), linewidth = 0.8) +
 
-      # Vertical dashed lines for salient feedback trials
-      ggplot2::geom_vline(data = vline_data, ggplot2::aes(xintercept = trial),
-                          color = "#b88600", linetype = "dashed", linewidth = 0.25, alpha = 0.85) +
-
-      # Mark trial-by-trial outcomes on the chosen option
+      # Mark trial-by-trial outcomes on event lanes (top=Stimulus 0, bottom=Stimulus 1)
       ggplot2::geom_point(
-        data = event_df,
+        data = win_df,
         ggplot2::aes(
           x = trial,
-          y = chosen_prob,
-          fill = event_type,
-          shape = choice_shape
+          y = anchor_y,
+          fill = event_type
         ),
+        shape = 21,
         color = "black",
-        size = 2.2,
-        stroke = 0.35,
+        size = 2.0,
+        stroke = 0.40,
+        alpha = 0.95
+      ) +
+      ggplot2::geom_point(
+        data = loss_df,
+        ggplot2::aes(
+          x = trial,
+          y = anchor_y,
+          fill = "Loss"
+        ),
+        shape = 4,
+        color = "grey40",
+        size = 1.8,
+        stroke = 0.55,
         alpha = 0.95
       ) +
       ggplot2::scale_fill_manual(
@@ -119,25 +134,33 @@ viz_inspection_participant_trials <- function(task_data, output_dir) {
           "Salient Win" = "#ffc400"
         )
       ) +
-      ggplot2::scale_shape_manual(
-        name = "Chosen stimulus",
-        values = c("Stimulus 0" = 21, "Stimulus 1" = 22)
-      ) +
       ggplot2::scale_color_manual(
         name = NULL,
         values = c("A" = "dodgerblue", "B" = "firebrick"),
         labels = c("A" = "p(Reward | A)", "B" = "p(Reward | B)")
       ) +
       ggplot2::guides(
-        # Ensure fill legend uses a fill-capable shape (otherwise it shows as black)
-        fill = ggplot2::guide_legend(override.aes = list(shape = 21, colour = "black")),
-        shape = ggplot2::guide_legend(override.aes = list(fill = "white"))
+        # Keep only a single compact legend for event type (with correct shapes)
+        fill = ggplot2::guide_legend(
+          override.aes = list(
+            shape = c(4, 21, 21),
+            colour = c("grey40", "black", "black"),
+            fill = c("grey70", "#a6dba6", "#ffc400"),
+            size = 3
+          )
+        ),
+        color = ggplot2::guide_legend(order = 2)
       ) +
 
       # Axes
-      ggplot2::scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25)) +
+      ggplot2::scale_y_continuous(
+        limits = c(-0.12, 1.12),
+        breaks = seq(0, 1, 0.25),
+        labels = scales::number_format(accuracy = 0.01)
+      ) +
       ggplot2::labs(
         title = paste("Participant", pid, ": Reward Probabilities & Trial-wise Outcomes"),
+        subtitle = "Top lane = Stimulus 0, bottom lane = Stimulus 1. Markers show outcome on the chosen stimulus.",
         y = "p(Reward)",
         x = "Trial"
       ) +
@@ -146,16 +169,21 @@ viz_inspection_participant_trials <- function(task_data, output_dir) {
       ggplot2::theme_bw(base_size = 10) +
       ggplot2::theme(
         plot.title = ggplot2::element_text(face = "bold", hjust = 0.5),
-        legend.position = "right",
-        legend.title = ggplot2::element_text(size = 9),
-        legend.text = ggplot2::element_text(size = 8),
+        plot.subtitle = ggplot2::element_text(size = 9, color = "grey25", hjust = 0.5),
+        legend.position = c(0.86, 0.50),
+        legend.justification = c(0, 0.5),
+        legend.title = ggplot2::element_text(size = 8),
+        legend.text = ggplot2::element_text(size = 7),
+        legend.key.height = grid::unit(0.45, "cm"),
+        legend.key.width = grid::unit(0.45, "cm"),
+        legend.background = ggplot2::element_rect(fill = ggplot2::alpha("white", 0.85), color = "grey70", linewidth = 0.3),
         panel.grid.major = ggplot2::element_blank(),
         panel.grid.minor = ggplot2::element_blank()
       )
 
     # Save plot
     outfile <- file.path(target_dir, paste0("combined_reward_probs_subject_", pid, ".png"))
-    ggplot2::ggsave(outfile, plot = p, width = 8, height = 4, dpi = 300)
+    ggplot2::ggsave(outfile, plot = p, width = 10, height = 4, dpi = 300)
   }
 }
 
@@ -395,12 +423,14 @@ viz_posterior_densities_grid <- function(data_list, output_dir) {
         plot_data <- rbind(plot_data, chunk)
       }
     } else {
-       # List of data frames
-       plot_data <- do.call(rbind, data_list)
+       # List of (possibly empty) data frames
+       # Be defensive: parallel workers may have failed and returned NULL.
+       ok_elems <- Filter(function(x) is.data.frame(x) && ncol(x) > 0, data_list)
+       plot_data <- if (length(ok_elems) > 0) do.call(rbind, ok_elems) else data.frame()
     }
   }
 
-  if (nrow(plot_data) == 0) {
+  if (is.null(plot_data) || !is.data.frame(plot_data) || nrow(plot_data) == 0) {
     warning("No matching parameters found for density grid plot.")
     return(NULL)
   }
