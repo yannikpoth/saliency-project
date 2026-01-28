@@ -3,7 +3,7 @@
 # ============================================
 
 # ========== Configuration ==========
-RUN_EDA <- TRUE       # Run exploratory data analysis and generate report
+RUN_EDA <- TRUE      # Run exploratory data analysis and generate report
 RUN_MODELS <- FALSE  # Run reinforcement learning model fitting
 # ===================================
 
@@ -105,6 +105,19 @@ if (RUN_EDA) {
   reward_rate_subj <- compute_reward_rate_subject(data_proc$task)
   win_stay_overall_subj <- compute_win_stay_overall_subject(wsls_by_outcome_subj)
 
+  # Questionnaire (EDA only)
+  message("Computing questionnaire score summaries (EDA)...")
+  questionnaire_scores_subj <- compute_questionnaire_subject_scores(
+    data_proc$questionnaire,
+    score_cols = c("bis_total", "ss_total")
+  )
+  questionnaire_scores_long <- compute_questionnaire_scores_long(
+    data_proc$questionnaire,
+    score_cols = c("bis_total", "ss_total")
+  )
+  questionnaire_score_summaries <- compute_questionnaire_score_summaries(questionnaire_scores_long)
+  bis_ss_stats <- compute_bis_ss_relationship_stats(data_proc$questionnaire)
+
 
 
   # 2. Generate and Save Visualizations
@@ -146,7 +159,12 @@ if (RUN_EDA) {
       wsls_test = wsls_test,
       prp_test = prp_test,
       reward_rate_subj = reward_rate_subj,
-      win_stay_overall_subj = win_stay_overall_subj
+      win_stay_overall_subj = win_stay_overall_subj,
+      questionnaire_scores_subj = questionnaire_scores_subj,
+      questionnaire_scores_long = questionnaire_scores_long,
+      questionnaire_score_summaries = questionnaire_score_summaries,
+      bis_ss_corr = bis_ss_stats$corr,
+      bis_ss_lm = bis_ss_stats$lm
     ),
     quiet = FALSE
   )
@@ -185,18 +203,44 @@ if (RUN_MODELS) {
   # Timestamp for this analysis run (used for output directories and fit files)
   TIMESTAMP <- format(Sys.time(), "%Y%m%d_%H%M%S")
 
-  # Container for LOO objects (lightweight), diagnostics, and posterior samples
+  # Container for fit paths, LOO objects (lightweight), diagnostics, and posterior samples
+  fit_paths <- list()
   loo_objects <- list()
   diagnostic_summaries <- list()
   posterior_samples_list <- list()
 
-  # Process models sequentially to save memory
-  message(sprintf("\n=== Processing %d models sequentially ===", length(model_names)))
+  # ------------------------------------------------------------
+  # Two-phase strategy (macOS-safe + still fast):
+  # Phase 1: Fit/cache models using parallel chains (mc.cores = STAN_CHAINS)
+  # Phase 2: Reload cached fits and run diagnostics/plots with mc.cores = 1
+  #          to avoid macOS fork() crashes triggered by bayesplot/graphics.
+  # ------------------------------------------------------------
 
-  for (model_name in model_names) {
-    message(sprintf("\n--- Processing model: %s ---", model_name))
+  # Detect platform once
+  sysname <- tryCatch(Sys.info()[["sysname"]], error = function(e) NA_character_)
 
-    # 1. Fit or Load Model
+  # ------------------------
+  # Phase 1: Fit/cache models (model-parallel, NO diagnostics/plots in workers)
+  # ------------------------
+  message(sprintf("\n=== Phase 1/2: Fitting/caching %d models (model-parallel) ===", length(model_names)))
+
+  # Plan: keep chains fixed at STAN_CHAINS (2), and parallelize across models to
+  # utilize all CPU cores (e.g., 3 models × 2 chains ≈ 6 cores).
+  cores_total <- parallel::detectCores(logical = TRUE)
+  if (is.na(cores_total) || cores_total < 1) cores_total <- 1L
+  reserve_cores <- 0L
+  workers <- floor(max(1L, as.integer(cores_total) - reserve_cores) / as.integer(STAN_CHAINS))
+  workers <- max(1L, min(as.integer(workers), length(model_names)))
+
+  message(sprintf("Phase 1 parallelism: %d model workers × %d chains/model (≈ %d cores).",
+                  workers, as.integer(STAN_CHAINS), workers * as.integer(STAN_CHAINS)))
+
+  worker_fit <- function(model_name) {
+    message(sprintf("\n--- [Fit worker] %s ---", model_name))
+
+    # Use chain-parallelism *within* this model
+    options(mc.cores = as.integer(STAN_CHAINS))
+
     fit <- rl_load_or_fit(
       model_name,
       stan_data = stan_data,
@@ -209,7 +253,72 @@ if (RUN_MODELS) {
       verbose = TRUE
     )
 
-    # 2. Run Diagnostics
+    # Find the latest cached fit path for this model (pattern is model-specific; safe in parallel)
+    pattern <- paste0("^", model_name, "_fit.*\\.rds$")
+    existing_files <- list.files("analysis/outputs/fits", pattern = pattern, full.names = TRUE)
+    if (length(existing_files) == 0) {
+      stop(sprintf("No cached fit file found after fitting %s (pattern: %s)", model_name, pattern))
+    }
+    info <- file.info(existing_files)
+    fit_path <- rownames(info)[which.max(info$mtime)]
+
+    # Compute LOO (kept lightweight)
+    loo_obj <- NULL
+    has_log_lik <- any(grepl("^log_lik", names(fit)))
+    if (has_log_lik) {
+      loo_obj <- tryCatch({
+        log_lik <- loo::extract_log_lik(fit, parameter_name = "log_lik")
+        loo::loo(log_lik)
+      }, error = function(e) {
+        warning(sprintf("Failed to compute LOO for %s: %s", model_name, e$message))
+        NULL
+      })
+    } else {
+      warning(sprintf("Model %s does not contain log_lik parameter. Skipping LOO.", model_name))
+    }
+
+    rm(fit)
+    if (exists("log_lik")) rm(log_lik)
+    gc()
+
+    list(model_name = model_name, fit_path = fit_path, loo = loo_obj)
+  }
+
+  # IMPORTANT: no diagnostics/plotting called before or inside these workers,
+  # so we avoid the macOS fork crash triggered by bayesplot/graphics.
+  fit_results <- if (workers > 1L) {
+    parallel::mclapply(model_names, worker_fit, mc.cores = workers)
+  } else {
+    lapply(model_names, worker_fit)
+  }
+
+  names(fit_results) <- model_names
+
+  # Collect paths + LOO into named lists for downstream steps
+  for (m in model_names) {
+    fit_paths[[m]] <- fit_results[[m]]$fit_path
+    loo_objects[[m]] <- fit_results[[m]]$loo
+  }
+
+  # -------------------------------
+  # Phase 2: Diagnostics (macOS-safe)
+  # -------------------------------
+  message(sprintf("\n=== Phase 2/2: Diagnostics for %d cached models ===", length(model_names)))
+
+  # Disable chain-parallelism during diagnostics/plotting to avoid macOS fork() crashes.
+  # (Even on non-macOS, this keeps the plotting phase predictable and memory-light.)
+  options(mc.cores = 1L)
+
+  for (model_name in model_names) {
+    message(sprintf("\n--- [Diagnostics] %s ---", model_name))
+
+    fit_path <- fit_paths[[model_name]]
+    if (is.null(fit_path) || !file.exists(fit_path)) {
+      stop(sprintf("Cached fit path missing for %s", model_name))
+    }
+    message(sprintf("Loading cached fit: %s", basename(fit_path)))
+    fit <- readRDS(fit_path)
+
     # Outputs are saved to analysis/outputs/[figs|tables]/[model]_[timestamp]/diagnostics/
     results <- diagnostics_run_all(
       fit = fit,
@@ -218,32 +327,11 @@ if (RUN_MODELS) {
     )
     diagnostic_summaries[[model_name]] <- results$summary
 
-    # 3. Compute LOO (for model comparison later)
-    # We extract log_lik and compute loo here, then discard fit
-    message("Computing LOO...")
-
-    # Check if log_lik exists (handling vector/array parameters which appear as log_lik[1], etc.)
-    has_log_lik <- any(grepl("^log_lik", names(fit)))
-
-    if (has_log_lik) {
-      tryCatch({
-        log_lik <- loo::extract_log_lik(fit, parameter_name = "log_lik")
-        loo_objects[[model_name]] <- loo::loo(log_lik)
-      }, error = function(e) {
-        warning(sprintf("Failed to compute LOO for %s: %s", model_name, e$message))
-      })
-    } else {
-        warning(sprintf("Model %s does not contain log_lik parameter. Skipping LOO.", model_name))
-    }
-
-    # 4. Extract posterior samples for density grid plot
-    # Uses helper from viz.R to get lightweight data frame
+    # Extract posterior samples for density grid plot (lightweight)
     posterior_samples_list[[model_name]] <- viz_extract_posterior_data(fit, model_name)
 
-    # 5. Clean up
     rm(fit)
-    if (exists("log_lik")) rm(log_lik)
-    gc() # Force garbage collection
+    gc()
   }
 
   # Combine diagnostic summaries into one table for comparison

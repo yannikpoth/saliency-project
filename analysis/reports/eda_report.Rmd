@@ -31,6 +31,11 @@ params:
   prp_test: NA
   reward_rate_subj: NA
   win_stay_overall_subj: NA
+  questionnaire_scores_subj: NA
+  questionnaire_scores_long: NA
+  questionnaire_score_summaries: NA
+  bis_ss_corr: NA
+  bis_ss_lm: NA
 ---
 
 ```{r setup, include=FALSE}
@@ -1281,7 +1286,189 @@ if (!is.null(params$prp_by_outcome_subj)) {
 }
 ```
 
-# 7. Appendix (Participant-level Diagnostics)
+# 7. Questionnaire Data (EDA)
+
+This section provides descriptive exploration of questionnaire scores. We focus on total scores for impulsivity (BIS total) and sensation seeking (SSS total).
+
+## 7.1 Subject-level scores
+
+```{r questionnaire-subj-table}
+if (!is.null(params$questionnaire_scores_subj)) {
+  params$questionnaire_scores_subj %>%
+    dplyr::rename(
+      "Subject ID" = participant_id,
+      "BIS Total" = bis_total,
+      "SSS Total" = ss_total
+    ) %>%
+    kable(digits = 2, caption = "Table 7.1: Questionnaire Total Scores by Subject") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+    scroll_box(height = "500px")
+} else {
+  print("No questionnaire data provided.")
+}
+```
+
+## 7.2 Score distributions
+
+```{r questionnaire-score-summaries}
+if (!is.null(params$questionnaire_score_summaries)) {
+  params$questionnaire_score_summaries %>%
+    dplyr::mutate(
+      scale_name = dplyr::recode(
+        scale_name,
+        bis_total = "BIS Total",
+        ss_total = "SSS Total"
+      )
+    ) %>%
+    dplyr::rename(
+      "Scale" = scale_name,
+      "N" = n,
+      "Mean" = mean,
+      "Median" = median,
+      "SD" = sd,
+      "Min" = min,
+      "Max" = max
+    ) %>%
+    kable(digits = 2, caption = "Table 7.2: Descriptive Statistics for Questionnaire Scores") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+} else {
+  print("No questionnaire score summaries provided.")
+}
+```
+
+```{r questionnaire-distribution-plots, results='asis'}
+if (!is.null(params$questionnaire_scores_long)) {
+  qlong <- params$questionnaire_scores_long %>%
+    dplyr::mutate(
+      scale_name = dplyr::recode(
+        scale_name,
+        bis_total = "BIS Total",
+        ss_total = "SSS Total"
+      )
+    )
+
+  p_dist <- ggplot(qlong, aes(x = score)) +
+    geom_histogram(
+      aes(y = after_stat(density)),
+      bins = 20,
+      fill = "skyblue",
+      color = "black",
+      alpha = 0.7
+    ) +
+    geom_density(alpha = 0.2, fill = "lightblue") +
+    facet_wrap(~ scale_name, scales = "free") +
+    labs(
+      title = "Distribution of Key Questionnaire Scores",
+      x = "Score",
+      y = "Density"
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold"),
+      strip.text = element_text(face = "bold")
+    )
+
+  p_box <- qlong %>%
+    dplyr::filter(scale_name %in% c("BIS Total", "SSS Total")) %>%
+    ggplot(aes(x = scale_name, y = score, fill = scale_name)) +
+    geom_boxplot(alpha = 0.7, outlier.colour = "red") +
+    geom_jitter(width = 0.12, alpha = 0.25, size = 1.2) +
+    labs(
+      title = "Boxplots of BIS and SSS Total Scores",
+      y = "Score",
+      x = NULL
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(plot.title = element_text(face = "bold"), legend.position = "none")
+
+  tmp1 <- tempfile(fileext = ".png")
+  tmp2 <- tempfile(fileext = ".png")
+  ggsave(tmp1, plot = p_dist, width = 10, height = 5, dpi = 170)
+  ggsave(tmp2, plot = p_box, width = 7, height = 5, dpi = 170)
+
+  img1 <- knitr::image_uri(tmp1)
+  img2 <- knitr::image_uri(tmp2)
+
+  htmltools::browsable(
+    htmltools::tagList(
+      htmltools::tags$div(style = "max-width: 980px; margin: 8px 0 18px 0;",
+                          htmltools::tags$img(src = img1, style = "width: 100%; height: auto; border-radius: 6px;")),
+      htmltools::tags$div(style = "max-width: 760px; margin: 8px 0 18px 0;",
+                          htmltools::tags$img(src = img2, style = "width: 100%; height: auto; border-radius: 6px;"))
+    )
+  )
+}
+```
+
+## 7.3 BIS–SSS relationship
+
+```{r questionnaire-bis-ss-plot, results='asis'}
+if (!is.null(params$questionnaire_scores_subj) && !is.null(params$bis_ss_corr)) {
+  df <- params$questionnaire_scores_subj %>%
+    dplyr::filter(is.finite(bis_total) & is.finite(ss_total))
+
+  corr <- params$bis_ss_corr
+  r_txt <- if (!is.null(corr$r) && is.finite(corr$r[1])) sprintf("r = %.2f", corr$r[1]) else "r = NA"
+  p_txt <- if (!is.null(corr$p_value) && is.finite(corr$p_value[1])) scales::pvalue(corr$p_value[1], accuracy = .001, add_p = TRUE) else "p = NA"
+
+  p <- ggplot(df, aes(x = bis_total, y = ss_total)) +
+    geom_point(alpha = 0.65, color = "purple") +
+    geom_smooth(method = "lm", color = "black", se = FALSE, linetype = "dashed") +
+    labs(
+      title = "Relationship between BIS Total and SSS Total Scores",
+      subtitle = paste0(r_txt, ", ", p_txt),
+      x = "BIS Total Score",
+      y = "SSS Total Score"
+    ) +
+    theme_minimal(base_size = 13) +
+    theme(plot.title = element_text(face = "bold"), plot.subtitle = element_text(color = "grey30"))
+
+  tmp <- tempfile(fileext = ".png")
+  ggsave(tmp, plot = p, width = 7, height = 6, dpi = 170)
+  img <- knitr::image_uri(tmp)
+
+  htmltools::browsable(
+    htmltools::tags$div(
+      style = "max-width: 820px; margin: 8px 0 18px 0;",
+      htmltools::tags$img(src = img, style = "width: 100%; height: auto; border-radius: 6px;")
+    )
+  )
+}
+```
+
+```{r questionnaire-bis-ss-tables}
+if (!is.null(params$bis_ss_corr)) {
+  params$bis_ss_corr %>%
+    dplyr::transmute(
+      `\\(\\mathbf{N}\\)` = n,
+      `\\(\\mathbf{r}\\)` = r,
+      `\\(\\mathbf{t}\\)` = t,
+      `\\(\\mathbf{df}\\)` = df,
+      `\\(\\mathbf{p}\\)` = p_value,
+      `\\(\\mathbf{CI}_{95\\%}^{low}\\)` = conf_low,
+      `\\(\\mathbf{CI}_{95\\%}^{high}\\)` = conf_high
+    ) %>%
+    kable(digits = 4, escape = FALSE, caption = "Table 7.3: Pearson Correlation (BIS Total vs SSS Total)") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+    row_spec(0, bold = FALSE)
+}
+
+if (!is.null(params$bis_ss_lm)) {
+  params$bis_ss_lm %>%
+    dplyr::transmute(
+      `\\(\\mathbf{N}\\)` = n,
+      `\\(\\mathbf{Intercept}\\)` = intercept,
+      `\\(\\mathbf{Slope}\\)` = slope,
+      `\\(\\mathbf{R^2}\\)` = r_squared,
+      `\\(\\mathbf{p_{slope}}\\)` = p_slope
+    ) %>%
+    kable(digits = 4, escape = FALSE, caption = "Table 7.4: Linear Model (SSS Total ~ BIS Total)") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+    row_spec(0, bold = FALSE)
+}
+```
+
+# 8. Appendix (Participant-level Diagnostics)
 
 This appendix embeds participant-level inspection outputs directly into this HTML file for deep-dive exploration. Use the buttons below to expand/collapse all participants.
 
@@ -1321,7 +1508,7 @@ htmltools::browsable(
 )
 ```
 
-## 7.1 Per-participant inspection plots (Reward probabilities + trial-wise outcomes)
+## 8.1 Per-participant inspection plots (Reward probabilities + trial-wise outcomes)
 
 ```{r appendix-participant-plots, results='asis'}
 if (!is.null(params$cleaning_stats_subj)) {
@@ -1359,7 +1546,7 @@ if (!is.null(params$cleaning_stats_subj)) {
 }
 ```
 
-## 7.2 Participant behavioral summary (full table)
+## 8.2 Participant behavioral summary (full table)
 
 This table is intentionally wide (participants as columns). Use horizontal scrolling to inspect all participants.
 
@@ -1406,7 +1593,7 @@ if (!is.null(params$stim_pref_subj) &&
   tbl <- wide %>%
     kable(
       digits = 3,
-      caption = "Table 7.1: Participant Behavioral Summary (Wide)"
+      caption = "Table 8.1: Participant Behavioral Summary (Wide)"
     ) %>%
     kable_styling(
       bootstrap_options = c("striped", "hover", "condensed"),

@@ -1070,3 +1070,170 @@ compute_win_stay_overall_subject <- function(wsls_by_outcome_subj) {
     ) %>%
     dplyr::arrange(participant_id)
 }
+
+compute_questionnaire_subject_scores <- function(questionnaire_data, score_cols = c("bis_total", "ss_total")) {
+  #####
+  # Extract a clean subject-level questionnaire score table (EDA)
+  #
+  # Keeps participant_id and a configurable set of score columns, dropping any
+  # score columns that are not present. This is used for EDA tables/plots in the
+  # HTML data browser report.
+  #
+  # Parameters
+  # ----
+  # questionnaire_data : tibble
+  #     Processed questionnaire data containing participant_id and score columns
+  # score_cols : character
+  #     Vector of score column names to extract (default: c("bis_total", "ss_total"))
+  #
+  # Returns
+  # ----
+  # tibble
+  #     Subject-level questionnaire table with participant_id and present score columns
+  #####
+  stopifnot("questionnaire_data must have participant_id" = "participant_id" %in% names(questionnaire_data))
+  stopifnot("score_cols must be character" = is.character(score_cols))
+
+  present <- score_cols[score_cols %in% names(questionnaire_data)]
+  questionnaire_data %>%
+    dplyr::select(participant_id, dplyr::all_of(present)) %>%
+    dplyr::mutate(participant_id = as.character(participant_id)) %>%
+    dplyr::arrange(participant_id)
+}
+
+compute_questionnaire_scores_long <- function(questionnaire_data, score_cols = c("bis_total", "ss_total")) {
+  #####
+  # Convert questionnaire scores to long format (EDA)
+  #
+  # Parameters
+  # ----
+  # questionnaire_data : tibble
+  #     Processed questionnaire data containing participant_id and score columns
+  # score_cols : character
+  #     Vector of score column names to pivot (default: c("bis_total", "ss_total"))
+  #
+  # Returns
+  # ----
+  # tibble
+  #     Long-format table with columns: participant_id, scale_name, score
+  #####
+  stopifnot("questionnaire_data must have participant_id" = "participant_id" %in% names(questionnaire_data))
+  stopifnot("score_cols must be character" = is.character(score_cols))
+
+  present <- score_cols[score_cols %in% names(questionnaire_data)]
+  if (length(present) == 0) {
+    return(tibble::tibble(participant_id = character(), scale_name = character(), score = numeric()))
+  }
+
+  questionnaire_data %>%
+    dplyr::select(participant_id, dplyr::all_of(present)) %>%
+    dplyr::mutate(participant_id = as.character(participant_id)) %>%
+    tidyr::pivot_longer(
+      cols = dplyr::all_of(present),
+      names_to = "scale_name",
+      values_to = "score"
+    ) %>%
+    dplyr::filter(!is.na(score))
+}
+
+compute_questionnaire_score_summaries <- function(questionnaire_scores_long) {
+  #####
+  # Compute descriptive summaries for questionnaire scores (EDA)
+  #
+  # Parameters
+  # ----
+  # questionnaire_scores_long : tibble
+  #     Long-format questionnaire score table with columns: scale_name, score
+  #
+  # Returns
+  # ----
+  # tibble
+  #     Summary table with columns: scale_name, n, mean, median, sd, min, max
+  #####
+  stopifnot("questionnaire_scores_long must have scale_name" = "scale_name" %in% names(questionnaire_scores_long))
+  stopifnot("questionnaire_scores_long must have score" = "score" %in% names(questionnaire_scores_long))
+
+  questionnaire_scores_long %>%
+    dplyr::group_by(scale_name) %>%
+    dplyr::summarise(
+      n = dplyr::n(),
+      mean = mean(score, na.rm = TRUE),
+      median = stats::median(score, na.rm = TRUE),
+      sd = stats::sd(score, na.rm = TRUE),
+      min = min(score, na.rm = TRUE),
+      max = max(score, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    dplyr::arrange(scale_name)
+}
+
+compute_bis_ss_relationship_stats <- function(questionnaire_data) {
+  #####
+  # Compute BIS-total vs SSS-total relationship summaries (EDA)
+  #
+  # Provides a Pearson correlation test summary and a simple linear model
+  # summary for ss_total ~ bis_total.
+  #
+  # Parameters
+  # ----
+  # questionnaire_data : tibble
+  #     Processed questionnaire data containing bis_total and ss_total
+  #
+  # Returns
+  # ----
+  # list
+  #     Named list with:
+  #     - corr: tibble with correlation test summary
+  #     - lm: tibble with linear model summary
+  #####
+  stopifnot("questionnaire_data must have bis_total" = "bis_total" %in% names(questionnaire_data))
+  stopifnot("questionnaire_data must have ss_total" = "ss_total" %in% names(questionnaire_data))
+
+  df <- questionnaire_data %>%
+    dplyr::select(participant_id, bis_total, ss_total) %>%
+    dplyr::filter(is.finite(bis_total) & is.finite(ss_total))
+
+  if (nrow(df) < 3) {
+    return(list(
+      corr = tibble::tibble(
+        n = nrow(df),
+        r = NA_real_,
+        conf_low = NA_real_,
+        conf_high = NA_real_,
+        t = NA_real_,
+        df = NA_real_,
+        p_value = NA_real_
+      ),
+      lm = tibble::tibble(
+        n = nrow(df),
+        intercept = NA_real_,
+        slope = NA_real_,
+        r_squared = NA_real_,
+        p_slope = NA_real_
+      )
+    ))
+  }
+
+  ct <- stats::cor.test(df$bis_total, df$ss_total, method = "pearson")
+  lm_fit <- stats::lm(ss_total ~ bis_total, data = df)
+  lm_sum <- summary(lm_fit)
+
+  list(
+    corr = tibble::tibble(
+      n = nrow(df),
+      r = unname(ct$estimate),
+      conf_low = unname(ct$conf.int[1]),
+      conf_high = unname(ct$conf.int[2]),
+      t = unname(ct$statistic),
+      df = unname(ct$parameter),
+      p_value = ct$p.value
+    ),
+    lm = tibble::tibble(
+      n = nrow(df),
+      intercept = unname(stats::coef(lm_fit)[1]),
+      slope = unname(stats::coef(lm_fit)[2]),
+      r_squared = unname(lm_sum$r.squared),
+      p_slope = unname(lm_sum$coefficients["bis_total", "Pr(>|t|)"])
+    )
+  )
+}
