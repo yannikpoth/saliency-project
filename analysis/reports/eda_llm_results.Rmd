@@ -1,0 +1,345 @@
+---
+title: "EDA Results (LLM-Ready, Tables Only)"
+date: "`r format(Sys.time(), '%Y-%m-%d %H:%M:%S')`"
+output:
+  github_document:
+    toc: false
+    html_preview: false
+params:
+  cleaning_stats_agg: NA
+  cleaning_stats_subj: NA
+  stim_pref_agg: NA
+  stim_pref_subj: NA
+  stim_pref_test: NA
+  reward_rate_by_choice: NA
+  reward_rate_over_bins: NA
+  feedback_condition_overall: NA
+  feedback_condition_by_subject: NA
+  rt_summary_agg: NA
+  rt_summary_subj: NA
+  rt_over_bins: NA
+  rt_by_condition_summary: NA
+  rt_by_condition_data: NA
+  accuracy_agg: NA
+  accuracy_subj: NA
+  accuracy_test: NA
+  accuracy_over_bins: NA
+  wsls_by_outcome_subj: NA
+  prp_by_outcome_subj: NA
+  wsls_test: NA
+  wsls_loss_vs_wins_test: NA
+  prp_test: NA
+  reward_rate_subj: NA
+  win_stay_overall_subj: NA
+  questionnaire_scores_subj: NA
+  questionnaire_scores_long: NA
+  questionnaire_score_summaries: NA
+  bis_ss_corr: NA
+  bis_ss_lm: NA
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+options(knitr.kable.NA = "NA")
+
+library(dplyr)
+library(tidyr)
+library(knitr)
+
+.as_tbl <- function(x) {
+  #####
+  # Convert common objects into a tibble suitable for printing
+  #
+  # Parameters
+  # ----
+  # x : any
+  #     Object expected to be a tibble/data.frame, or NULL/NA placeholder
+  #
+  # Returns
+  # ----
+  # tibble | NULL
+  #     A tibble for printing, or NULL if not printable.
+  #####
+  if (is.null(x)) return(NULL)
+  if (length(x) == 1 && is.atomic(x) && is.na(x)) return(NULL)
+  if (inherits(x, "data.frame")) return(dplyr::as_tibble(x))
+  NULL
+}
+
+.kbl <- function(x, digits = 3) {
+  #####
+  # Print a tibble/data.frame as a Markdown table
+  #
+  # Parameters
+  # ----
+  # x : data.frame | tibble
+  #     Table-like object
+  # digits : integer
+  #     Digits for numeric formatting (default: 3)
+  #
+  # Returns
+  # ----
+  # character
+  #     Markdown table (as-is in the knitted document)
+  #####
+  x <- .as_tbl(x)
+  if (is.null(x) || nrow(x) == 0) return(knitr::asis_output("_No data._\n"))
+  knitr::kable(x, format = "pipe", digits = digits)
+}
+
+.pivot_wide_safe <- function(df, id_col, name_col, value_cols) {
+  #####
+  # Pivot long participant tables to wide format (safe for Markdown readability)
+  #
+  # Parameters
+  # ----
+  # df : tibble
+  #     Long table to pivot
+  # id_col : character
+  #     ID column name (e.g., "participant_id")
+  # name_col : character
+  #     Column name holding the category names (e.g., "outcome_type")
+  # value_cols : character
+  #     Columns to pivot as values
+  #
+  # Returns
+  # ----
+  # tibble
+  #     Wide table with prefixed columns
+  #####
+  df <- .as_tbl(df)
+  if (is.null(df) || nrow(df) == 0) return(tibble::tibble())
+  value_cols <- value_cols[value_cols %in% names(df)]
+  if (length(value_cols) == 0) return(tibble::tibble())
+
+  df %>%
+    dplyr::mutate(
+      "{name_col}" := as.character(.data[[name_col]]),
+      "{id_col}" := as.character(.data[[id_col]])
+    ) %>%
+    tidyr::pivot_wider(
+      id_cols = dplyr::all_of(id_col),
+      names_from = dplyr::all_of(name_col),
+      values_from = dplyr::all_of(value_cols),
+      names_sep = "__"
+    ) %>%
+    dplyr::arrange(.data[[id_col]])
+}
+```
+
+This file contains **tables and statistical summaries only** (no plots), structured for downstream LLM inspection.
+
+- **Generated at**: `r format(Sys.time(), '%Y-%m-%d %H:%M:%S')`
+
+## 1) Data cleaning
+
+### 1.1 Aggregate cleaning statistics
+
+```{r}
+.kbl(params$cleaning_stats_agg, digits = 2)
+```
+
+### 1.2 Participant-level cleaning statistics
+
+```{r}
+df <- .as_tbl(params$cleaning_stats_subj)
+if (!is.null(df)) df <- df %>% dplyr::mutate(participant_id = as.character(participant_id))
+.kbl(df, digits = 2)
+```
+
+## 2) Stimulus preference
+
+### 2.1 Aggregate stimulus preference
+
+```{r}
+.kbl(params$stim_pref_agg, digits = 4)
+```
+
+### 2.2 Participant-level stimulus preference
+
+```{r}
+df <- .as_tbl(params$stim_pref_subj)
+if (!is.null(df)) df <- df %>% dplyr::mutate(participant_id = as.character(participant_id))
+.kbl(df, digits = 4)
+```
+
+### 2.3 Preference test (vs chance)
+
+```{r}
+.kbl(params$stim_pref_test, digits = 6)
+```
+
+## 3) Rewards & feedback conditions
+
+### 3.1 Reward rate by chosen stimulus
+
+```{r}
+.kbl(params$reward_rate_by_choice, digits = 4)
+```
+
+### 3.2 Reward rate over trial bins
+
+```{r}
+.kbl(params$reward_rate_over_bins, digits = 4)
+```
+
+### 3.3 Feedback condition proportions (overall; valid trials)
+
+```{r}
+.kbl(params$feedback_condition_overall, digits = 4)
+```
+
+### 3.4 Feedback condition proportions (participant-level; valid trials)
+
+```{r}
+df <- .as_tbl(params$feedback_condition_by_subject)
+wide <- .pivot_wide_safe(
+  df = df,
+  id_col = "participant_id",
+  name_col = "condition_label",
+  value_cols = c("n", "prop")
+)
+.kbl(wide, digits = 4)
+```
+
+## 4) Reaction time (RT)
+
+### 4.1 Aggregate RT summary
+
+```{r}
+.kbl(params$rt_summary_agg, digits = 4)
+```
+
+### 4.2 RT summary by feedback condition
+
+```{r}
+.kbl(params$rt_by_condition_summary, digits = 4)
+```
+
+### 4.3 RT over trial bins
+
+```{r}
+.kbl(params$rt_over_bins, digits = 4)
+```
+
+### 4.4 Participant-level RT summary
+
+```{r}
+df <- .as_tbl(params$rt_summary_subj)
+if (!is.null(df)) df <- df %>% dplyr::mutate(participant_id = as.character(participant_id))
+.kbl(df, digits = 4)
+```
+
+## 5) Accuracy
+
+### 5.1 Aggregate accuracy summary
+
+```{r}
+.kbl(params$accuracy_agg, digits = 4)
+```
+
+### 5.2 Accuracy test (vs chance)
+
+```{r}
+.kbl(params$accuracy_test, digits = 6)
+```
+
+### 5.3 Accuracy over trial bins
+
+```{r}
+.kbl(params$accuracy_over_bins, digits = 4)
+```
+
+### 5.4 Participant-level accuracy
+
+```{r}
+df <- .as_tbl(params$accuracy_subj)
+if (!is.null(df)) df <- df %>% dplyr::mutate(participant_id = as.character(participant_id))
+.kbl(df, digits = 4)
+```
+
+## 6) Choice strategy metrics (WSLS, PRP)
+
+### 6.1 WSLS by previous outcome (participant-level)
+
+```{r}
+df <- .as_tbl(params$wsls_by_outcome_subj)
+wide <- .pivot_wide_safe(
+  df = df,
+  id_col = "participant_id",
+  name_col = "outcome_type",
+  value_cols = c("n_opportunities", "n_stay", "prob_stay")
+)
+.kbl(wide, digits = 4)
+```
+
+### 6.2 WSLS tests
+
+```{r}
+.kbl(params$wsls_test, digits = 6)
+```
+
+```{r}
+.kbl(params$wsls_loss_vs_wins_test, digits = 6)
+```
+
+### 6.3 PRP median by previous outcome (participant-level)
+
+```{r}
+df <- .as_tbl(params$prp_by_outcome_subj)
+wide <- .pivot_wide_safe(
+  df = df,
+  id_col = "participant_id",
+  name_col = "outcome_type_prp",
+  value_cols = c("n_trials", "median_prp")
+)
+.kbl(wide, digits = 4)
+```
+
+### 6.4 PRP test
+
+```{r}
+.kbl(params$prp_test, digits = 6)
+```
+
+### 6.5 Reward rate (participant-level)
+
+```{r}
+df <- .as_tbl(params$reward_rate_subj)
+if (!is.null(df)) df <- df %>% dplyr::mutate(participant_id = as.character(participant_id))
+.kbl(df, digits = 4)
+```
+
+### 6.6 Overall win-stay probability (participant-level)
+
+```{r}
+df <- .as_tbl(params$win_stay_overall_subj)
+if (!is.null(df)) df <- df %>% dplyr::mutate(participant_id = as.character(participant_id))
+.kbl(df, digits = 4)
+```
+
+## 7) Questionnaire scores
+
+### 7.1 Questionnaire scores (participant-level)
+
+```{r}
+df <- .as_tbl(params$questionnaire_scores_subj)
+if (!is.null(df)) df <- df %>% dplyr::mutate(participant_id = as.character(participant_id))
+.kbl(df, digits = 4)
+```
+
+### 7.2 Questionnaire score summaries
+
+```{r}
+.kbl(params$questionnaire_score_summaries, digits = 4)
+```
+
+### 7.3 BIS vs SSS relationship
+
+```{r}
+.kbl(params$bis_ss_corr, digits = 6)
+```
+
+```{r}
+.kbl(params$bis_ss_lm, digits = 6)
+```

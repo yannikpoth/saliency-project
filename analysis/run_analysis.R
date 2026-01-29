@@ -3,8 +3,8 @@
 # ============================================
 
 # ========== Configuration ==========
-RUN_EDA <- TRUE      # Run exploratory data analysis and generate report
-RUN_MODELS <- FALSE  # Run reinforcement learning model fitting
+RUN_EDA <- FALSE      # Run exploratory data analysis and generate report
+RUN_MODELS <- TRUE  # Run reinforcement learning model fitting
 # ===================================
 
 # ========== Modeling Policy ==========
@@ -42,6 +42,7 @@ source("analysis/R/rl_models.R")
 source("analysis/R/behavior_metrics.R")
 source("analysis/R/viz.R")
 source("analysis/R/diagnostics.R")
+source("analysis/reports/render_eda_llm_results.R")
 
 # Initialize Input/Output
 io_init()
@@ -101,6 +102,7 @@ if (RUN_EDA) {
   wsls_by_outcome_subj <- compute_wsls_by_outcome_subject(data_proc$task)
   prp_by_outcome_subj <- compute_prp_median_by_outcome_subject(data_proc$task)
   wsls_test <- test_wsls_salient_vs_nonsalient(wsls_by_outcome_subj)
+  wsls_loss_vs_wins_test <- test_wsls_loss_vs_wins(wsls_by_outcome_subj)
   prp_test <- test_prp_salient_vs_nonsalient(prp_by_outcome_subj)
   reward_rate_subj <- compute_reward_rate_subject(data_proc$task)
   win_stay_overall_subj <- compute_win_stay_overall_subject(wsls_by_outcome_subj)
@@ -109,7 +111,7 @@ if (RUN_EDA) {
   message("Computing questionnaire score summaries (EDA)...")
   questionnaire_scores_subj <- compute_questionnaire_subject_scores(
     data_proc$questionnaire,
-    score_cols = c("bis_total", "ss_total")
+    score_cols = c("bis_total", "ss_total", "SST", "SSE", "SSD", "SSB")
   )
   questionnaire_scores_long <- compute_questionnaire_scores_long(
     data_proc$questionnaire,
@@ -131,44 +133,57 @@ if (RUN_EDA) {
     dir.create("analysis/outputs/reports", recursive = TRUE)
   }
 
+  eda_date_tag <- format(Sys.time(), "%Y%m%d")
+  eda_params <- list(
+    cleaning_stats_agg = cleaning_stats_agg,
+    cleaning_stats_subj = cleaning_stats_subj,
+    stim_pref_agg = stim_pref_agg,
+    stim_pref_subj = stim_pref_subj,
+    stim_pref_test = stim_pref_test,
+    reward_rate_by_choice = reward_rate_by_choice,
+    reward_rate_over_bins = reward_rate_over_bins,
+    feedback_condition_overall = feedback_condition_overall,
+    feedback_condition_by_subject = feedback_condition_by_subject,
+    rt_summary_agg = rt_summary_agg,
+    rt_summary_subj = rt_summary_subj,
+    rt_over_bins = rt_over_bins,
+    rt_by_condition_summary = rt_by_condition$summary,
+    rt_by_condition_data = rt_by_condition$data,
+    accuracy_agg = accuracy_agg,
+    accuracy_subj = accuracy_subj,
+    accuracy_test = accuracy_test,
+    accuracy_over_bins = accuracy_over_bins,
+    wsls_by_outcome_subj = wsls_by_outcome_subj,
+    prp_by_outcome_subj = prp_by_outcome_subj,
+    wsls_test = wsls_test,
+    wsls_loss_vs_wins_test = wsls_loss_vs_wins_test,
+    prp_test = prp_test,
+    reward_rate_subj = reward_rate_subj,
+    win_stay_overall_subj = win_stay_overall_subj,
+    questionnaire_scores_subj = questionnaire_scores_subj,
+    questionnaire_scores_long = questionnaire_scores_long,
+    questionnaire_score_summaries = questionnaire_score_summaries,
+    bis_ss_corr = bis_ss_stats$corr,
+    bis_ss_lm = bis_ss_stats$lm
+  )
+
+  # HTML report (plots + tables)
   rmarkdown::render(
     input = "analysis/reports/eda_report.Rmd",
-    output_file = paste0("eda_report_", format(Sys.time(), "%Y%m%d"), ".html"),
+    output_file = paste0("eda_report_", eda_date_tag, ".html"),
     output_dir = "analysis/outputs/reports",
-    params = list(
-      cleaning_stats_agg = cleaning_stats_agg,
-      cleaning_stats_subj = cleaning_stats_subj,
-      stim_pref_agg = stim_pref_agg,
-      stim_pref_subj = stim_pref_subj,
-      stim_pref_test = stim_pref_test,
-      reward_rate_by_choice = reward_rate_by_choice,
-      reward_rate_over_bins = reward_rate_over_bins,
-      feedback_condition_overall = feedback_condition_overall,
-      feedback_condition_by_subject = feedback_condition_by_subject,
-      rt_summary_agg = rt_summary_agg,
-      rt_summary_subj = rt_summary_subj,
-      rt_over_bins = rt_over_bins,
-      rt_by_condition_summary = rt_by_condition$summary,
-      rt_by_condition_data = rt_by_condition$data,
-      accuracy_agg = accuracy_agg,
-      accuracy_subj = accuracy_subj,
-      accuracy_test = accuracy_test,
-      accuracy_over_bins = accuracy_over_bins,
-      wsls_by_outcome_subj = wsls_by_outcome_subj,
-      prp_by_outcome_subj = prp_by_outcome_subj,
-      wsls_test = wsls_test,
-      prp_test = prp_test,
-      reward_rate_subj = reward_rate_subj,
-      win_stay_overall_subj = win_stay_overall_subj,
-      questionnaire_scores_subj = questionnaire_scores_subj,
-      questionnaire_scores_long = questionnaire_scores_long,
-      questionnaire_score_summaries = questionnaire_score_summaries,
-      bis_ss_corr = bis_ss_stats$corr,
-      bis_ss_lm = bis_ss_stats$lm
-    ),
+    params = eda_params,
     quiet = FALSE
   )
-  message(sprintf("Report saved to: analysis/outputs/reports/eda_report_%s.html", format(Sys.time(), "%Y%m%d")))
+  message(sprintf("Report saved to: analysis/outputs/reports/eda_report_%s.html", eda_date_tag))
+
+  # Markdown report (tables only; LLM-ready)
+  md_path <- render_eda_llm_results(
+    params = eda_params,
+    output_dir = "analysis/outputs/reports",
+    date_tag = eda_date_tag
+  )
+  message(sprintf("LLM-ready EDA results saved to: %s", md_path))
 
   message("EDA complete.")
 }

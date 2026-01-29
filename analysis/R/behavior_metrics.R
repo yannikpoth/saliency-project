@@ -613,6 +613,10 @@ compute_reward_rate_over_trial_bins <- function(task_data, n_bins = 10) {
   # Bins trials (by trial number) into n_bins and computes mean reward rate and
   # SEM across trials within each bin on valid-choice trials.
   #
+  # If the task data includes reward probability columns (reward_prob_1,
+  # reward_prob_2), also computes a lightweight proxy for the underlying
+  # environment drift per bin: mean(max(reward_prob_1, reward_prob_2)).
+  #
   # Parameters
   # ----
   # task_data : tibble
@@ -634,12 +638,20 @@ compute_reward_rate_over_trial_bins <- function(task_data, n_bins = 10) {
     dplyr::filter(!is.na(choice) & !is.na(reward)) %>%
     dplyr::mutate(trial_bin = dplyr::ntile(trial, n_bins))
 
+  has_prob_cols <- all(c("reward_prob_1", "reward_prob_2") %in% names(df))
+  if (isTRUE(has_prob_cols)) {
+    df <- df %>% dplyr::mutate(optimal_reward_prob = pmax(reward_prob_1, reward_prob_2))
+  } else {
+    df <- df %>% dplyr::mutate(optimal_reward_prob = NA_real_)
+  }
+
   df %>%
     dplyr::group_by(trial_bin) %>%
     dplyr::summarise(
       n = dplyr::n(),
       mean_reward_rate_bin = mean(reward == 1, na.rm = TRUE),
       sem_reward_rate_bin = stats::sd(reward == 1, na.rm = TRUE) / sqrt(n),
+      mean_optimal_reward_prob_bin = mean(optimal_reward_prob, na.rm = TRUE),
       .groups = "drop"
     ) %>%
     dplyr::arrange(trial_bin)
@@ -652,10 +664,13 @@ compute_feedback_condition_proportions <- function(task_data, valid_only = TRUE)
   # Computes the distribution of feedback conditions across trials. By default
   # uses valid-choice trials only.
   #
+  # NOTE: For condition == 0 (non-salient feedback), this function splits trials
+  # into "Non-Salient Win" vs "Non-Salient Loss" based on reward.
+  #
   # Parameters
   # ----
   # task_data : tibble
-  #     Cleaned task data containing: choice, condition
+  #     Cleaned task data containing: choice, condition, reward
   # valid_only : logical
   #     If TRUE, exclude missed choices (choice == NA) (default: TRUE)
   #
@@ -666,6 +681,7 @@ compute_feedback_condition_proportions <- function(task_data, valid_only = TRUE)
   #####
   stopifnot("task_data must have condition" = "condition" %in% names(task_data))
   stopifnot("task_data must have choice" = "choice" %in% names(task_data))
+  stopifnot("task_data must have reward" = "reward" %in% names(task_data))
 
   df <- task_data
   if (isTRUE(valid_only)) df <- df %>% dplyr::filter(!is.na(choice))
@@ -673,7 +689,8 @@ compute_feedback_condition_proportions <- function(task_data, valid_only = TRUE)
   df %>%
     dplyr::mutate(
       condition_label = dplyr::case_when(
-        condition == 0 ~ "Non-Salient",
+        condition == 0 & reward == 1 ~ "Non-Salient Win",
+        condition == 0 & reward == 0 ~ "Loss",
         condition == 1 ~ "Salient",
         condition == 2 ~ "Missed",
         TRUE ~ "Other"
@@ -691,10 +708,13 @@ compute_feedback_condition_proportions_by_subject <- function(task_data, valid_o
   # Computes per-participant proportions of condition labels. By default uses
   # valid-choice trials only.
   #
+  # NOTE: For condition == 0 (non-salient feedback), this function splits trials
+  # into "Non-Salient Win" vs "Non-Salient Loss" based on reward.
+  #
   # Parameters
   # ----
   # task_data : tibble
-  #     Cleaned task data containing: participant_id, choice, condition
+  #     Cleaned task data containing: participant_id, choice, condition, reward
   # valid_only : logical
   #     If TRUE, exclude missed choices (choice == NA) (default: TRUE)
   #
@@ -706,6 +726,7 @@ compute_feedback_condition_proportions_by_subject <- function(task_data, valid_o
   stopifnot("task_data must have participant_id" = "participant_id" %in% names(task_data))
   stopifnot("task_data must have condition" = "condition" %in% names(task_data))
   stopifnot("task_data must have choice" = "choice" %in% names(task_data))
+  stopifnot("task_data must have reward" = "reward" %in% names(task_data))
 
   df <- task_data
   if (isTRUE(valid_only)) df <- df %>% dplyr::filter(!is.na(choice))
@@ -713,7 +734,8 @@ compute_feedback_condition_proportions_by_subject <- function(task_data, valid_o
   df %>%
     dplyr::mutate(
       condition_label = dplyr::case_when(
-        condition == 0 ~ "Non-Salient",
+        condition == 0 & reward == 1 ~ "Non-Salient Win",
+        condition == 0 & reward == 0 ~ "Loss",
         condition == 1 ~ "Salient",
         condition == 2 ~ "Missed",
         TRUE ~ "Other"
@@ -980,6 +1002,85 @@ test_wsls_salient_vs_nonsalient <- function(wsls_by_outcome_subj) {
   )
 }
 
+test_wsls_loss_vs_wins <- function(wsls_by_outcome_subj) {
+  #####
+  # Paired test: WSLS loss vs all wins (pooled across win types)
+  #
+  # Constructs per-subject P(stay|Win) by pooling Salient Win and Non-Salient Win
+  # opportunities (opportunity-weighted within subject), then compares
+  # P(stay|Loss) vs P(stay|Win) in a paired t-test.
+  #
+  # Parameters
+  # ----
+  # wsls_by_outcome_subj : tibble
+  #     Output from compute_wsls_by_outcome_subject()
+  #
+  # Returns
+  # ----
+  # tibble
+  #     Single-row paired t-test summary (Loss vs All Wins).
+  #####
+  stopifnot("wsls must have participant_id" = "participant_id" %in% names(wsls_by_outcome_subj))
+  stopifnot("wsls must have outcome_type" = "outcome_type" %in% names(wsls_by_outcome_subj))
+  stopifnot("wsls must have n_opportunities" = "n_opportunities" %in% names(wsls_by_outcome_subj))
+  stopifnot("wsls must have n_stay" = "n_stay" %in% names(wsls_by_outcome_subj))
+
+  df <- wsls_by_outcome_subj %>%
+    dplyr::filter(outcome_type %in% c("Loss", "Non-Salient Win", "Salient Win")) %>%
+    dplyr::mutate(participant_id = as.character(participant_id))
+
+  loss <- df %>%
+    dplyr::filter(outcome_type == "Loss") %>%
+    dplyr::select(participant_id, n_opportunities_loss = n_opportunities, n_stay_loss = n_stay) %>%
+    dplyr::mutate(p_loss = ifelse(n_opportunities_loss > 0, n_stay_loss / n_opportunities_loss, NA_real_))
+
+  win <- df %>%
+    dplyr::filter(outcome_type %in% c("Non-Salient Win", "Salient Win")) %>%
+    dplyr::group_by(participant_id) %>%
+    dplyr::summarise(
+      n_opportunities_win = sum(n_opportunities, na.rm = TRUE),
+      n_stay_win = sum(n_stay, na.rm = TRUE),
+      p_win = ifelse(n_opportunities_win > 0, n_stay_win / n_opportunities_win, NA_real_),
+      .groups = "drop"
+    )
+
+  wide <- loss %>%
+    dplyr::inner_join(win, by = "participant_id") %>%
+    dplyr::filter(is.finite(p_loss) & is.finite(p_win))
+
+  x <- wide$p_loss
+  y <- wide$p_win
+
+  if (length(x) < 2) {
+    return(tibble::tibble(
+      n = length(x),
+      mean_a = ifelse(length(x) == 0, NA_real_, mean(x)),
+      mean_b = ifelse(length(y) == 0, NA_real_, mean(y)),
+      mean_diff = ifelse(length(x) == 0, NA_real_, mean(x - y)),
+      sd_diff = ifelse(length(x) < 2, NA_real_, stats::sd(x - y)),
+      t = NA_real_,
+      df = NA_real_,
+      p_value = NA_real_,
+      conf_low = NA_real_,
+      conf_high = NA_real_
+    ))
+  }
+
+  tt <- stats::t.test(x, y, paired = TRUE)
+  tibble::tibble(
+    n = length(x),
+    mean_a = mean(x),
+    mean_b = mean(y),
+    mean_diff = mean(x - y),
+    sd_diff = stats::sd(x - y),
+    t = unname(tt$statistic),
+    df = unname(tt$parameter),
+    p_value = tt$p.value,
+    conf_low = unname(tt$conf.int[1]),
+    conf_high = unname(tt$conf.int[2])
+  )
+}
+
 test_prp_salient_vs_nonsalient <- function(prp_by_outcome_subj) {
   #####
   # Paired test: PRP after salient win vs after non-salient win
@@ -1148,7 +1249,7 @@ compute_questionnaire_score_summaries <- function(questionnaire_scores_long) {
   # Returns
   # ----
   # tibble
-  #     Summary table with columns: scale_name, n, mean, median, sd, min, max
+  #     Summary table with columns: scale_name, n, mean, median, sd, iqr, min, max
   #####
   stopifnot("questionnaire_scores_long must have scale_name" = "scale_name" %in% names(questionnaire_scores_long))
   stopifnot("questionnaire_scores_long must have score" = "score" %in% names(questionnaire_scores_long))
@@ -1160,6 +1261,7 @@ compute_questionnaire_score_summaries <- function(questionnaire_scores_long) {
       mean = mean(score, na.rm = TRUE),
       median = stats::median(score, na.rm = TRUE),
       sd = stats::sd(score, na.rm = TRUE),
+      iqr = stats::IQR(score, na.rm = TRUE),
       min = min(score, na.rm = TRUE),
       max = max(score, na.rm = TRUE),
       .groups = "drop"

@@ -4,6 +4,7 @@ date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
   html_document:
     theme: readable
+    mathjax: default
     toc: true
     toc_float: true
 params:
@@ -28,6 +29,7 @@ params:
   wsls_by_outcome_subj: NA
   prp_by_outcome_subj: NA
   wsls_test: NA
+  wsls_loss_vs_wins_test: NA
   prp_test: NA
   reward_rate_subj: NA
   win_stay_overall_subj: NA
@@ -46,6 +48,35 @@ library(dplyr)
 library(ggplot2)
 library(scales)
 library(htmltools)
+
+# --- Shared styling helpers (keep changes minimal & consistent) ---
+eda_theme_plot2 <- function(base_size = 18) {
+  #####
+  # Shared ggplot theme matching the “Plot 2” house style
+  #
+  # Parameters
+  # ----
+  # base_size : numeric
+  #     Base font size (default: 18)
+  #
+  # Returns
+  # ----
+  # ggplot2 theme
+  #     Theme object to be added to a ggplot.
+  #####
+  ggplot2::theme_minimal(base_size = base_size) +
+    ggplot2::theme(
+      panel.grid.major = ggplot2::element_blank(),
+      panel.grid.minor = ggplot2::element_blank(),
+      plot.title = ggplot2::element_text(face = "bold", size = 20),
+      axis.title.x = ggplot2::element_text(size = 18),
+      axis.title.y = ggplot2::element_text(size = 18),
+      axis.text.x = ggplot2::element_text(size = 16),
+      axis.text.y = ggplot2::element_text(size = 16)
+    )
+}
+
+eda_bar_border <- list(color = "black", linewidth = 0.5)
 ```
 
 # 1. Data Cleaning Statistics
@@ -114,7 +145,7 @@ if (!is.null(params$stim_pref_agg)) {
   )
 
   p <- ggplot(plot_df, aes(x = stimulus, y = proportion, fill = stimulus)) +
-    geom_col(alpha = 0.85, width = 0.7) +
+    geom_col(alpha = 0.85, width = 0.7, color = eda_bar_border$color, linewidth = eda_bar_border$linewidth) +
     scale_y_continuous(labels = scales::percent_format(accuracy = 1), limits = c(0, 1)) +
     scale_fill_manual(values = c("Stimulus 0" = "dodgerblue", "Stimulus 1" = "firebrick")) +
     labs(
@@ -122,8 +153,8 @@ if (!is.null(params$stim_pref_agg)) {
       x = "Choice",
       y = "Proportion"
     ) +
-    theme_minimal(base_size = 12) +
-    theme(legend.position = "none", plot.title = element_text(face = "bold"))
+    eda_theme_plot2() +
+    theme(legend.position = "none")
 
   print(p)
 }
@@ -208,14 +239,7 @@ if (!is.null(params$stim_pref_subj)) {
         x = if (prop_col == "prop_choice_0") expression(italic(p)(choice == 0)) else expression(italic(p)(choice == 1)),
         y = expression(italic(N))
       ) +
-      theme_minimal(base_size = 18) +
-      theme(
-        plot.title = element_text(face = "bold", size = 20),
-        axis.title.x = element_text(size = 18),
-        axis.title.y = element_text(size = 18),
-        axis.text.x = element_text(size = 16),
-        axis.text.y = element_text(size = 16)
-      )
+      eda_theme_plot2()
   }
 
   p0 <- .make_pref_plot(subj, "prop_choice_0", "Stimulus 0", "dodgerblue")
@@ -317,14 +341,14 @@ if (!is.null(params$stim_pref_test)) {
     dplyr::transmute(
       `\\(\\mathbf{N}\\)` = n,
       `\\(\\mathbf{\\mu_0}\\)` = mu,
-      `\\(\\mathbf{\\bar{p}}\\)` = mean_prop_choice_1,
+      `\\(\\mathbf{\\bar{x}}\\)` = mean_prop_choice_1,
       `\\(\\mathbf{SD}\\)` = sd_prop_choice_1,
       `\\(\\mathbf{\\Delta}\\)` = mean_diff_from_mu,
       `\\(\\mathbf{t}\\)` = t,
       `\\(\\mathbf{df}\\)` = df,
       `\\(\\mathbf{p}\\)` = p_value,
-      `\\(\\mathbf{CI}_{95\\%}^{low}\\)` = conf_low,
-      `\\(\\mathbf{CI}_{95\\%}^{high}\\)` = conf_high
+      `\\(\\mathbf{2.5\\%}\\)` = conf_low,
+      `\\(\\mathbf{97.5\\%}\\)` = conf_high
     ) %>%
     kable(
       digits = 4,
@@ -371,7 +395,7 @@ if (!is.null(params$reward_rate_by_choice) &&
     dplyr::mutate(choice_label = factor(choice_label, levels = c("Stimulus 0", "Stimulus 1")))
 
   p_rr_choice <- ggplot(rr, aes(x = choice_label, y = reward_rate, fill = choice_label)) +
-    geom_col(alpha = 0.85, width = 0.7) +
+    geom_col(alpha = 0.85, width = 0.7, color = eda_bar_border$color, linewidth = eda_bar_border$linewidth) +
     scale_y_continuous(labels = scales::percent_format(accuracy = 1), limits = c(0, 1)) +
     scale_fill_manual(values = c("Stimulus 0" = "dodgerblue", "Stimulus 1" = "firebrick")) +
     labs(
@@ -379,17 +403,20 @@ if (!is.null(params$reward_rate_by_choice) &&
       x = "Stimulus Choice",
       y = "Reward Rate"
     ) +
-    theme_minimal(base_size = 14) +
-    theme(legend.position = "none", plot.title = element_text(face = "bold"))
+    eda_theme_plot2() +
+    theme(legend.position = "none")
 
   tmp_rr_choice <- tempfile(fileext = ".png")
   ggsave(tmp_rr_choice, plot = p_rr_choice, width = 7, height = 5, dpi = 170)
 
   # ---- Plot 2: Mean reward rate over trial bins ----
   rb <- params$reward_rate_over_bins
-  p_rr_bins <- ggplot(rb, aes(x = trial_bin, y = mean_reward_rate_bin)) +
-    geom_line(color = "darkgreen", linewidth = 1) +
-    geom_point(color = "darkgreen", size = 2) +
+  p_rr_bins <- ggplot(rb, aes(x = trial_bin)) +
+    {if ("mean_optimal_reward_prob_bin" %in% names(rb) && any(is.finite(rb$mean_optimal_reward_prob_bin)))
+      geom_line(aes(y = mean_optimal_reward_prob_bin, color = "Optimal reward prob (max)"), alpha = 0.65, linewidth = 0.9)
+    } +
+    geom_line(aes(y = mean_reward_rate_bin, color = "Observed reward rate"), linewidth = 1) +
+    geom_point(aes(y = mean_reward_rate_bin, color = "Observed reward rate"), size = 2) +
     geom_errorbar(
       aes(ymin = mean_reward_rate_bin - sem_reward_rate_bin, ymax = mean_reward_rate_bin + sem_reward_rate_bin),
       width = 0.2,
@@ -397,40 +424,47 @@ if (!is.null(params$reward_rate_by_choice) &&
       alpha = 0.5
     ) +
     scale_y_continuous(labels = scales::percent_format(accuracy = 1), limits = c(0, 1)) +
+    scale_color_manual(
+      values = c(
+        "Observed reward rate" = "darkgreen",
+        "Optimal reward prob (max)" = "grey40"
+      )
+    ) +
     labs(
       title = "Mean Reward Rate Over Trial Bins",
       x = "Trial Bin (10 bins)",
-      y = "Mean Reward Rate ± SEM"
+      y = "Mean Reward Rate ± SEM",
+      color = NULL
     ) +
     scale_x_continuous(breaks = sort(unique(rb$trial_bin))) +
-    theme_minimal(base_size = 14) +
-    theme(plot.title = element_text(face = "bold"))
+    eda_theme_plot2(base_size = 14) +
+    theme(legend.position = "top")
 
   tmp_rr_bins <- tempfile(fileext = ".png")
   ggsave(tmp_rr_bins, plot = p_rr_bins, width = 8, height = 5, dpi = 170)
 
   # ---- Plot 3: Proportion of feedback conditions (valid trials) ----
   fc <- params$feedback_condition_overall %>%
+    dplyr::filter(condition_label %in% c("Loss", "Non-Salient Win", "Salient")) %>%
     dplyr::mutate(
-      condition_label = factor(condition_label, levels = c("Non-Salient", "Salient", "Missed", "Other"))
+      condition_label = factor(condition_label, levels = c("Loss", "Non-Salient Win", "Salient"))
     )
 
   p_fc <- ggplot(fc, aes(x = condition_label, y = prop, fill = condition_label)) +
-    geom_col(alpha = 0.85, width = 0.75) +
+    geom_col(alpha = 0.85, width = 0.75, color = eda_bar_border$color, linewidth = eda_bar_border$linewidth) +
     scale_y_continuous(labels = scales::percent_format(accuracy = 1), limits = c(0, 1)) +
     scale_fill_manual(values = c(
-      "Non-Salient" = "grey70",
-      "Salient" = "gold",
-      "Missed" = "grey85",
-      "Other" = "grey85"
+      "Loss" = "grey70",
+      "Non-Salient Win" = "white",
+      "Salient" = "gold"
     )) +
     labs(
       title = "Proportion of Feedback Conditions (Valid Trials)",
-      x = "Feedback Condition",
+      x = NULL,
       y = "Proportion"
     ) +
-    theme_minimal(base_size = 14) +
-    theme(legend.position = "none", plot.title = element_text(face = "bold"))
+    eda_theme_plot2() +
+    theme(legend.position = "none")
 
   tmp_fc <- tempfile(fileext = ".png")
   ggsave(tmp_fc, plot = p_fc, width = 7, height = 4.5, dpi = 170)
@@ -455,6 +489,7 @@ if (!is.null(params$reward_rate_by_choice) &&
 ```{r feedback-agg-table}
 if (!is.null(params$feedback_condition_overall)) {
   params$feedback_condition_overall %>%
+    dplyr::filter(condition_label %in% c("Loss", "Non-Salient Win", "Salient")) %>%
     dplyr::rename(
       "Condition" = condition_label,
       "N Trials" = n,
@@ -472,18 +507,18 @@ if (!is.null(params$feedback_condition_overall)) {
 ```{r feedback-by-subject-plot, results='asis'}
 if (!is.null(params$feedback_condition_by_subject)) {
   df <- params$feedback_condition_by_subject %>%
+    dplyr::filter(condition_label %in% c("Loss", "Non-Salient Win", "Salient")) %>%
     dplyr::mutate(
-      condition_label = factor(condition_label, levels = c("Non-Salient", "Salient", "Missed", "Other"))
+      condition_label = factor(condition_label, levels = c("Loss", "Non-Salient Win", "Salient"))
     )
 
   p <- ggplot(df, aes(x = participant_id, y = prop, fill = condition_label)) +
-    geom_col(position = "stack") +
+    geom_col(position = "stack", color = eda_bar_border$color, linewidth = eda_bar_border$linewidth) +
     scale_y_continuous(labels = scales::percent_format(accuracy = 1), limits = c(0, 1)) +
     scale_fill_manual(values = c(
-      "Non-Salient" = "grey70",
-      "Salient" = "gold",
-      "Missed" = "grey85",
-      "Other" = "grey85"
+      "Loss" = "grey70",
+      "Non-Salient Win" = "white",
+      "Salient" = "gold"
     )) +
     labs(
       title = "Proportion of Feedback Conditions by Subject (Valid Trials)",
@@ -491,7 +526,7 @@ if (!is.null(params$feedback_condition_by_subject)) {
       y = "Proportion of Trials",
       fill = "Condition"
     ) +
-    theme_minimal(base_size = 11) +
+    eda_theme_plot2(base_size = 12) +
     theme(
       axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
       plot.title = element_text(face = "bold")
@@ -512,13 +547,38 @@ if (!is.null(params$feedback_condition_by_subject)) {
 
 ```{r feedback-by-subject-table}
 if (!is.null(params$feedback_condition_by_subject)) {
-  params$feedback_condition_by_subject %>%
-    dplyr::rename(
-      "Subject ID" = participant_id,
-      "Condition" = condition_label,
-      "N Trials" = n,
-      "Proportion" = prop
+  df <- params$feedback_condition_by_subject %>%
+    dplyr::filter(condition_label %in% c("Loss", "Non-Salient Win", "Salient")) %>%
+    dplyr::mutate(
+      participant_id = as.character(participant_id),
+      condition_key = dplyr::case_when(
+        condition_label == "Loss" ~ "loss",
+        condition_label == "Non-Salient Win" ~ "non_salient_win",
+        condition_label == "Salient" ~ "salient",
+        TRUE ~ NA_character_
+      )
     ) %>%
+    dplyr::filter(!is.na(condition_key)) %>%
+    dplyr::select(participant_id, condition_key, n, prop)
+
+  wide <- df %>%
+    tidyr::pivot_wider(
+      names_from = condition_key,
+      values_from = c(n, prop),
+      values_fill = list(n = 0, prop = 0)
+    ) %>%
+    dplyr::arrange(as.integer(participant_id)) %>%
+    dplyr::transmute(
+      "Subject ID" = participant_id,
+      "N Loss" = n_loss,
+      "N Non-salient win" = n_non_salient_win,
+      "N Salient" = n_salient,
+      "P Loss" = prop_loss,
+      "P Non-salient win" = prop_non_salient_win,
+      "P Salient" = prop_salient
+    )
+
+  wide %>%
     kable(digits = 3, caption = "Table 3.3: Feedback Condition Proportions by Subject (Valid Trials)") %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
     scroll_box(height = "500px")
@@ -671,6 +731,7 @@ if (!is.null(params$rt_by_condition_summary)) {
 ```{r rt-subj-table}
 if (!is.null(params$rt_summary_subj)) {
   params$rt_summary_subj %>%
+    dplyr::arrange(as.integer(participant_id)) %>%
     dplyr::rename(
       "Subject ID" = participant_id,
       "N Trials (RT available)" = n_trials_rt,
@@ -771,7 +832,22 @@ Accuracy is defined as choosing the option with the higher reward probability on
 
 ```{r accuracy-agg-table}
 if (!is.null(params$accuracy_agg)) {
+  iqr_val <- if (!is.null(params$accuracy_subj) && "mean_accuracy" %in% names(params$accuracy_subj)) {
+    stats::IQR(params$accuracy_subj$mean_accuracy, na.rm = TRUE)
+  } else {
+    NA_real_
+  }
+
   params$accuracy_agg %>%
+    dplyr::transmute(
+      "N" = `N Participants`,
+      "Mean" = `Mean Accuracy`,
+      "Median" = `Median Accuracy`,
+      "SD" = `SD Accuracy`,
+      "IQR" = iqr_val,
+      "Min" = `Min Accuracy`,
+      "Max" = `Max Accuracy`
+    ) %>%
     kable(digits = 3, caption = "Table 5.1: Aggregate Accuracy Summary") %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
 } else {
@@ -785,14 +861,14 @@ if (!is.null(params$accuracy_test)) {
     dplyr::transmute(
       `\\(\\mathbf{N}\\)` = n,
       `\\(\\mathbf{\\mu_0}\\)` = mu,
-      `\\(\\mathbf{\\bar{a}}\\)` = mean_accuracy,
+      `\\(\\mathbf{\\bar{x}}\\)` = mean_accuracy,
       `\\(\\mathbf{SD}\\)` = sd_accuracy,
       `\\(\\mathbf{\\Delta}\\)` = mean_diff_from_mu,
       `\\(\\mathbf{t}\\)` = t,
       `\\(\\mathbf{df}\\)` = df,
       `\\(\\mathbf{p}\\)` = p_value,
-      `\\(\\mathbf{CI}_{95\\%}^{low}\\)` = conf_low,
-      `\\(\\mathbf{CI}_{95\\%}^{high}\\)` = conf_high
+      `\\(\\mathbf{2.5\\%}\\)` = conf_low,
+      `\\(\\mathbf{97.5\\%}\\)` = conf_high
     ) %>%
     kable(
       digits = 4,
@@ -895,7 +971,7 @@ if (!is.null(params$accuracy_subj) && !is.null(params$accuracy_test) && !is.null
       caption = "Shaded area represents SEM."
     ) +
     scale_x_continuous(breaks = sort(unique(bins$trial_bin))) +
-    theme_bw(base_size = 14) +
+    eda_theme_plot2(base_size = 14) +
     theme(plot.title = element_text(face = "bold", hjust = 0.5))
 
   tmp_curve <- tempfile(fileext = ".png")
@@ -924,6 +1000,7 @@ if (!is.null(params$accuracy_subj) && !is.null(params$accuracy_test) && !is.null
 ```{r accuracy-subj-table}
 if (!is.null(params$accuracy_subj)) {
   params$accuracy_subj %>%
+    dplyr::arrange(as.integer(participant_id)) %>%
     dplyr::rename(
       "Subject ID" = participant_id,
       "Mean Accuracy" = mean_accuracy,
@@ -1089,19 +1166,66 @@ This section summarizes simple choice-strategy signatures:
 
 ```{r wsls-table}
 if (!is.null(params$wsls_by_outcome_subj)) {
-  params$wsls_by_outcome_subj %>%
-    dplyr::rename(
-      "Subject ID" = participant_id,
-      "Outcome Type (t-1)" = outcome_type,
-      "N Opportunities" = n_opportunities,
-      "N Stay" = n_stay,
-      "P(Stay)" = prob_stay
+  df <- params$wsls_by_outcome_subj %>%
+    dplyr::filter(outcome_type %in% c("Loss", "Non-Salient Win", "Salient Win")) %>%
+    dplyr::select(participant_id, outcome_type, prob_stay) %>%
+    dplyr::mutate(
+      participant_id = as.character(participant_id),
+      outcome_key = dplyr::case_when(
+        outcome_type == "Loss" ~ "Loss",
+        outcome_type == "Non-Salient Win" ~ "NW",
+        outcome_type == "Salient Win" ~ "SW",
+        TRUE ~ NA_character_
+      )
     ) %>%
-    kable(digits = 3, caption = "Table 6.1: Subject-Level Stay Probabilities by Previous Outcome") %>%
+    dplyr::filter(!is.na(outcome_key))
+
+  wide <- df %>%
+    dplyr::select(participant_id, outcome_key, prob_stay) %>%
+    tidyr::pivot_wider(
+      id_cols = participant_id,
+      names_from = outcome_key,
+      values_from = prob_stay
+    ) %>%
+    dplyr::arrange(as.integer(participant_id)) %>%
+    dplyr::transmute(
+      "Subject ID" = participant_id,
+      `\\(\\mathbf{P(Stay \\mid Loss)}\\)` = Loss,
+      `\\(\\mathbf{P(Stay \\mid NW)}\\)` = NW,
+      `\\(\\mathbf{P(Stay \\mid SW)}\\)` = SW
+    )
+
+  wide %>%
+    kable(digits = 3, escape = FALSE, caption = "Table 6.1: Subject-Level Stay Probabilities by Previous Outcome") %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
     scroll_box(height = "500px")
 } else {
   print("No WSLS data provided.")
+}
+```
+
+```{r wsls-mean-table}
+if (!is.null(params$wsls_by_outcome_subj)) {
+  params$wsls_by_outcome_subj %>%
+    dplyr::filter(outcome_type %in% c("Loss", "Non-Salient Win", "Salient Win")) %>%
+    dplyr::filter(is.finite(prob_stay)) %>%
+    dplyr::mutate(outcome_type = factor(outcome_type, levels = c("Loss", "Non-Salient Win", "Salient Win"))) %>%
+    dplyr::group_by(outcome_type) %>%
+    dplyr::summarise(
+      n_subjects = dplyr::n_distinct(participant_id),
+      mean_prob_stay = mean(prob_stay, na.rm = TRUE),
+      sd_prob_stay = stats::sd(prob_stay, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    dplyr::arrange(outcome_type) %>%
+    dplyr::rename(
+      "Outcome Type (t-1)" = outcome_type,
+      "N Subjects" = n_subjects,
+      "Mean P(Stay)" = mean_prob_stay,
+      "SD" = sd_prob_stay
+    ) %>%
+    kable(digits = 3, caption = "Table 6.1a: Mean Stay Probability by Previous Outcome (Across Subjects)") %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
 }
 ```
 
@@ -1110,16 +1234,14 @@ if (!is.null(params$wsls_test)) {
   params$wsls_test %>%
     dplyr::transmute(
       `\\(\\mathbf{N}\\)` = n,
-      `\\(\\mathbf{a}\\)` = a,
-      `\\(\\mathbf{b}\\)` = b,
-      `\\(\\mathbf{\\bar{x}_a}\\)` = mean_a,
-      `\\(\\mathbf{\\bar{x}_b}\\)` = mean_b,
+      `\\(\\mathbf{\\bar{x}_{SW}}\\)` = mean_a,
+      `\\(\\mathbf{\\bar{x}_{NW}}\\)` = mean_b,
       `\\(\\mathbf{\\Delta}\\)` = mean_diff,
       `\\(\\mathbf{t}\\)` = t,
       `\\(\\mathbf{df}\\)` = df,
       `\\(\\mathbf{p}\\)` = p_value,
-      `\\(\\mathbf{CI}_{95\\%}^{low}\\)` = conf_low,
-      `\\(\\mathbf{CI}_{95\\%}^{high}\\)` = conf_high
+      `\\(\\mathbf{2.5\\%}\\)` = conf_low,
+      `\\(\\mathbf{97.5\\%}\\)` = conf_high
     ) %>%
     kable(
       digits = 4,
@@ -1133,17 +1255,40 @@ if (!is.null(params$wsls_test)) {
 }
 ```
 
+```{r wsls-test-loss-vs-wins}
+if (!is.null(params$wsls_loss_vs_wins_test)) {
+  params$wsls_loss_vs_wins_test %>%
+    dplyr::transmute(
+      `\\(\\mathbf{N}\\)` = n,
+      `\\(\\mathbf{\\bar{x}_{Loss}}\\)` = mean_a,
+      `\\(\\mathbf{\\bar{x}_{Win}}\\)` = mean_b,
+      `\\(\\mathbf{\\Delta}\\)` = mean_diff,
+      `\\(\\mathbf{t}\\)` = t,
+      `\\(\\mathbf{df}\\)` = df,
+      `\\(\\mathbf{p}\\)` = p_value,
+      `\\(\\mathbf{2.5\\%}\\)` = conf_low,
+      `\\(\\mathbf{97.5\\%}\\)` = conf_high
+    ) %>%
+    kable(
+      digits = 4,
+      escape = FALSE,
+      caption = "Table 6.2a: Paired t-test of WSLS (Loss vs All Wins)"
+    ) %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+    row_spec(0, bold = FALSE)
+}
+```
 ```{r wsls-plot, results='asis'}
 if (!is.null(params$wsls_by_outcome_subj)) {
   df <- params$wsls_by_outcome_subj %>%
-    dplyr::filter(outcome_type %in% c("Salient Win", "Non-Salient Win")) %>%
+    dplyr::filter(outcome_type %in% c("Loss", "Non-Salient Win", "Salient Win")) %>%
     dplyr::filter(is.finite(prob_stay))
 
   if (nrow(df) > 0 && dplyr::n_distinct(df$participant_id) > 1) {
-    df$outcome_type <- factor(df$outcome_type, levels = c("Non-Salient Win", "Salient Win"))
+    df$outcome_type <- factor(df$outcome_type, levels = c("Loss", "Non-Salient Win", "Salient Win"))
 
     p <- ggplot(df, aes(x = outcome_type, y = prob_stay, fill = outcome_type)) +
-      geom_boxplot(alpha = 0.7, outlier.shape = NA, width = 0.5) +
+      geom_boxplot(alpha = 0.7, outlier.shape = NA, width = 0.5, color = "black", linewidth = 0.35) +
       geom_point(
         aes(group = participant_id),
         position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.5),
@@ -1157,10 +1302,10 @@ if (!is.null(params$wsls_by_outcome_subj)) {
         position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.5)
       ) +
       scale_y_continuous(labels = scales::percent_format(accuracy = 1), limits = c(0, 1)) +
-      scale_fill_manual(values = c("Non-Salient Win" = "grey70", "Salient Win" = "gold")) +
+      scale_fill_manual(values = c("Loss" = "grey70", "Non-Salient Win" = "white", "Salient Win" = "gold")) +
       labs(
         title = "Win-Stay Probability by Feedback Condition on Previous Trial",
-        subtitle = "P(Stay | Rewarded on t-1). Points/lines are individual subjects.",
+        subtitle = "P(Stay | outcome on t-1). Points/lines are individual subjects.",
         x = "Outcome on Previous Trial (t-1)",
         y = "Probability of Staying with Previous Choice"
       ) +
@@ -1185,14 +1330,41 @@ if (!is.null(params$wsls_by_outcome_subj)) {
 
 ```{r prp-table}
 if (!is.null(params$prp_by_outcome_subj)) {
-  params$prp_by_outcome_subj %>%
-    dplyr::rename(
-      "Subject ID" = participant_id,
-      "Outcome Type (t-1)" = outcome_type_prp,
-      "Median PRP (s)" = median_prp,
-      "N Trials" = n_trials
+  df <- params$prp_by_outcome_subj %>%
+    dplyr::filter(outcome_type_prp %in% c("Post-Loss", "Post-Non-Salient Win", "Post-Salient Win")) %>%
+    dplyr::select(participant_id, outcome_type_prp, median_prp) %>%
+    dplyr::mutate(
+      participant_id = as.character(participant_id),
+      outcome_key = dplyr::case_when(
+        outcome_type_prp == "Post-Loss" ~ "Loss",
+        outcome_type_prp == "Post-Non-Salient Win" ~ "NW",
+        outcome_type_prp == "Post-Salient Win" ~ "SW",
+        TRUE ~ NA_character_
+      )
     ) %>%
-    kable(digits = 3, caption = "Table 6.2: Subject-Level PRP (Median RT on Next Trial) by Previous Outcome") %>%
+    dplyr::filter(!is.na(outcome_key))
+
+  wide <- df %>%
+    dplyr::select(participant_id, outcome_key, median_prp) %>%
+    tidyr::pivot_wider(
+      id_cols = participant_id,
+      names_from = outcome_key,
+      values_from = median_prp
+    ) %>%
+    dplyr::arrange(as.integer(participant_id)) %>%
+    dplyr::transmute(
+      "Subject ID" = participant_id,
+      `\\(\\mathbf{Median\\ PRP_{Loss}}\\)` = Loss,
+      `\\(\\mathbf{Median\\ PRP_{NW}}\\)` = NW,
+      `\\(\\mathbf{Median\\ PRP_{SW}}\\)` = SW
+    )
+
+  wide %>%
+    kable(
+      digits = 3,
+      escape = FALSE,
+      caption = "Table 6.2: Subject-Level PRP (Median RT on Next Trial) by Previous Outcome"
+    ) %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
     scroll_box(height = "500px")
 } else {
@@ -1205,16 +1377,14 @@ if (!is.null(params$prp_test)) {
   params$prp_test %>%
     dplyr::transmute(
       `\\(\\mathbf{N}\\)` = n,
-      `\\(\\mathbf{a}\\)` = a,
-      `\\(\\mathbf{b}\\)` = b,
-      `\\(\\mathbf{\\bar{x}_a}\\)` = mean_a,
-      `\\(\\mathbf{\\bar{x}_b}\\)` = mean_b,
+      `\\(\\mathbf{\\bar{x}_{SW}}\\)` = mean_a,
+      `\\(\\mathbf{\\bar{x}_{NW}}\\)` = mean_b,
       `\\(\\mathbf{\\Delta}\\)` = mean_diff,
       `\\(\\mathbf{t}\\)` = t,
       `\\(\\mathbf{df}\\)` = df,
       `\\(\\mathbf{p}\\)` = p_value,
-      `\\(\\mathbf{CI}_{95\\%}^{low}\\)` = conf_low,
-      `\\(\\mathbf{CI}_{95\\%}^{high}\\)` = conf_high
+      `\\(\\mathbf{2.5\\%}\\)` = conf_low,
+      `\\(\\mathbf{97.5\\%}\\)` = conf_high
     ) %>%
     kable(
       digits = 4,
@@ -1237,11 +1407,11 @@ if (!is.null(params$prp_by_outcome_subj)) {
   if (nrow(df) > 0 && dplyr::n_distinct(df$participant_id) > 1) {
     df$outcome_type_prp <- factor(
       df$outcome_type_prp,
-      levels = c("Post-Non-Salient Win", "Post-Salient Win", "Post-Loss")
+      levels = c("Post-Loss", "Post-Non-Salient Win", "Post-Salient Win")
     )
 
     p <- ggplot(df, aes(x = outcome_type_prp, y = median_prp, fill = outcome_type_prp)) +
-      geom_boxplot(alpha = 0.7, outlier.shape = NA, width = 0.55) +
+      geom_boxplot(alpha = 0.7, outlier.shape = NA, width = 0.55, color = "black", linewidth = 0.35) +
       geom_point(
         aes(group = participant_id),
         position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.55),
@@ -1255,9 +1425,9 @@ if (!is.null(params$prp_by_outcome_subj)) {
         position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.55)
       ) +
       scale_fill_manual(values = c(
-        "Post-Non-Salient Win" = "grey70",
-        "Post-Salient Win" = "gold",
-        "Post-Loss" = "salmon"
+        "Post-Loss" = "grey70",
+        "Post-Non-Salient Win" = "white",
+        "Post-Salient Win" = "gold"
       )) +
       labs(
         title = "Post-Outcome Pauses (Median RT on Next Trial)",
@@ -1265,7 +1435,7 @@ if (!is.null(params$prp_by_outcome_subj)) {
         x = "Outcome on Previous Trial (t-1)",
         y = "Median Reaction Time on Current Trial (t) (seconds)"
       ) +
-      theme_minimal(base_size = 13) +
+      eda_theme_plot2(base_size = 13) +
       theme(
         legend.position = "none",
         plot.title = element_text(face = "bold"),
@@ -1294,13 +1464,20 @@ This section provides descriptive exploration of questionnaire scores. We focus 
 
 ```{r questionnaire-subj-table}
 if (!is.null(params$questionnaire_scores_subj)) {
+  rename_map <- c(
+    bis_total = "BIS Total",
+    ss_total = "SSS Total",
+    SST = "SST",
+    SSE = "SSE",
+    SSD = "SSD",
+    SSB = "SSB"
+  )
+
   params$questionnaire_scores_subj %>%
-    dplyr::rename(
-      "Subject ID" = participant_id,
-      "BIS Total" = bis_total,
-      "SSS Total" = ss_total
-    ) %>%
-    kable(digits = 2, caption = "Table 7.1: Questionnaire Total Scores by Subject") %>%
+    dplyr::mutate(participant_id = as.character(participant_id)) %>%
+    dplyr::rename("Subject ID" = participant_id) %>%
+    dplyr::rename_with(.cols = dplyr::any_of(names(rename_map)), .fn = function(x) unname(rename_map[x])) %>%
+    kable(digits = 2, caption = "Table 7.1: Questionnaire Scores by Subject (Totals + SSS Subscores)") %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
     scroll_box(height = "500px")
 } else {
@@ -1326,6 +1503,7 @@ if (!is.null(params$questionnaire_score_summaries)) {
       "Mean" = mean,
       "Median" = median,
       "SD" = sd,
+      "IQR" = iqr,
       "Min" = min,
       "Max" = max
     ) %>%
@@ -1347,54 +1525,112 @@ if (!is.null(params$questionnaire_scores_long)) {
       )
     )
 
-  p_dist <- ggplot(qlong, aes(x = score)) +
+  bis <- qlong %>% dplyr::filter(scale_name == "BIS Total") %>% dplyr::filter(is.finite(score))
+  sss <- qlong %>% dplyr::filter(scale_name == "SSS Total") %>% dplyr::filter(is.finite(score))
+
+  # Discrete binning (no gaps) + count y-axis, with scaled density overlay
+  p_dist <- ggplot() +
     geom_histogram(
-      aes(y = after_stat(density)),
-      bins = 20,
+      data = bis,
+      aes(x = score, y = after_stat(count)),
+      binwidth = 1,
+      center = 0.5,
       fill = "skyblue",
       color = "black",
-      alpha = 0.7
+      alpha = 0.75
     ) +
-    geom_density(alpha = 0.2, fill = "lightblue") +
-    facet_wrap(~ scale_name, scales = "free") +
+    geom_density(
+      data = bis,
+      aes(x = score, y = after_stat(count * 1)),
+      color = "navy",
+      linewidth = 0.9
+    ) +
+    geom_histogram(
+      data = sss,
+      aes(x = score, y = after_stat(count)),
+      binwidth = 0.25,
+      center = 0.125,
+      fill = "skyblue",
+      color = "black",
+      alpha = 0.75
+    ) +
+    geom_density(
+      data = sss,
+      aes(x = score, y = after_stat(count * 0.25)),
+      color = "navy",
+      linewidth = 0.9
+    ) +
+    facet_wrap(~ scale_name, scales = "free_x") +
     labs(
       title = "Distribution of Key Questionnaire Scores",
       x = "Score",
-      y = "Density"
+      y = "N"
+    ) +
+    scale_y_continuous(
+      breaks = function(l) {
+        m <- ceiling(max(l, na.rm = TRUE))
+        if (!is.finite(m) || m <= 0) return(integer())
+        seq(0, m, by = 2)
+      }
     ) +
     theme_minimal(base_size = 12) +
     theme(
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
       plot.title = element_text(face = "bold"),
       strip.text = element_text(face = "bold")
     )
 
-  p_box <- qlong %>%
-    dplyr::filter(scale_name %in% c("BIS Total", "SSS Total")) %>%
-    ggplot(aes(x = scale_name, y = score, fill = scale_name)) +
-    geom_boxplot(alpha = 0.7, outlier.colour = "red") +
+  p_box_bis <- bis %>%
+    ggplot(aes(x = factor(1), y = score)) +
+    geom_boxplot(alpha = 0.7, outlier.colour = "red", fill = "skyblue") +
     geom_jitter(width = 0.12, alpha = 0.25, size = 1.2) +
     labs(
-      title = "Boxplots of BIS and SSS Total Scores",
-      y = "Score",
+      title = "Boxplot of BIS Total Scores",
+      y = "BIS Total",
       x = NULL
     ) +
     theme_minimal(base_size = 12) +
-    theme(plot.title = element_text(face = "bold"), legend.position = "none")
+    theme(plot.title = element_text(face = "bold"), axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+  p_box_sss <- sss %>%
+    ggplot(aes(x = factor(1), y = score)) +
+    geom_boxplot(alpha = 0.7, outlier.colour = "red", fill = "skyblue") +
+    geom_jitter(width = 0.12, alpha = 0.25, size = 1.2) +
+    labs(
+      title = "Boxplot of SSS Total Scores",
+      y = "SSS Total",
+      x = NULL
+    ) +
+    theme_minimal(base_size = 12) +
+    theme(plot.title = element_text(face = "bold"), axis.text.x = element_blank(), axis.ticks.x = element_blank())
 
   tmp1 <- tempfile(fileext = ".png")
   tmp2 <- tempfile(fileext = ".png")
+  tmp3 <- tempfile(fileext = ".png")
   ggsave(tmp1, plot = p_dist, width = 10, height = 5, dpi = 170)
-  ggsave(tmp2, plot = p_box, width = 7, height = 5, dpi = 170)
+  ggsave(tmp2, plot = p_box_bis, width = 6.5, height = 5, dpi = 170)
+  ggsave(tmp3, plot = p_box_sss, width = 6.5, height = 5, dpi = 170)
 
   img1 <- knitr::image_uri(tmp1)
   img2 <- knitr::image_uri(tmp2)
+  img3 <- knitr::image_uri(tmp3)
 
   htmltools::browsable(
     htmltools::tagList(
       htmltools::tags$div(style = "max-width: 980px; margin: 8px 0 18px 0;",
                           htmltools::tags$img(src = img1, style = "width: 100%; height: auto; border-radius: 6px;")),
-      htmltools::tags$div(style = "max-width: 760px; margin: 8px 0 18px 0;",
-                          htmltools::tags$img(src = img2, style = "width: 100%; height: auto; border-radius: 6px;"))
+      htmltools::tags$div(
+        style = "display: flex; gap: 14px; max-width: 980px; margin: 8px 0 18px 0; align-items: stretch; flex-wrap: wrap;",
+        htmltools::tags$div(
+          style = "flex: 1 1 360px;",
+          htmltools::tags$img(src = img2, style = "width: 100%; height: auto; border-radius: 6px;")
+        ),
+        htmltools::tags$div(
+          style = "flex: 1 1 360px;",
+          htmltools::tags$img(src = img3, style = "width: 100%; height: auto; border-radius: 6px;")
+        )
+      )
     )
   )
 }
@@ -1578,21 +1814,84 @@ if (!is.null(params$stim_pref_subj) &&
     dplyr::mutate(
       Metric = dplyr::recode(
         Metric,
-        prop_choice_0 = "Prop. Stimulus 0",
-        prop_choice_1 = "Prop. Stimulus 1",
+        prop_choice_0 = "p(S0)",
+        prop_choice_1 = "p(S1)",
         reward_rate = "Reward Rate",
         mean_accuracy = "Accuracy",
-        win_stay_prob = "Win-Stay Prob"
+        win_stay_prob = "p(Win-Stay)"
       )
     )
 
   wide <- metrics_long %>%
     tidyr::pivot_wider(names_from = participant_id, values_from = Value) %>%
-    dplyr::arrange(factor(Metric, levels = c("Prop. Stimulus 0", "Prop. Stimulus 1", "Reward Rate", "Accuracy", "Win-Stay Prob")))
+    dplyr::arrange(factor(Metric, levels = c("p(S0)", "p(S1)", "Reward Rate", "Accuracy", "p(Win-Stay)")))
 
-  tbl <- wide %>%
-    kable(
-      digits = 3,
+  participant_cols <- setdiff(names(wide), "Metric")
+
+  # ---- Row-specific heatmap styling (minimal dependencies: base + kableExtra) ----
+  .col_lerp <- function(col1, col2, t) {
+    ramp <- grDevices::colorRamp(c(col1, col2))
+    rgb <- ramp(max(0, min(1, t))) / 255
+    grDevices::rgb(rgb[1], rgb[2], rgb[3])
+  }
+
+  .col_diverging <- function(x, vmin, mid, vmax, col_low, col_mid = "white", col_high) {
+    if (!is.finite(x)) return(NA_character_)
+    if (!is.finite(vmin) || !is.finite(vmax)) return(NA_character_)
+    if (vmin == vmax) return(col_mid)
+
+    if (x <= mid) {
+      denom <- (mid - vmin)
+      t <- if (denom <= 0) 0.5 else (x - vmin) / denom
+      return(.col_lerp(col_low, col_mid, t))
+    } else {
+      denom <- (vmax - mid)
+      t <- if (denom <= 0) 0.5 else (x - mid) / denom
+      return(.col_lerp(col_mid, col_high, t))
+    }
+  }
+
+  .col_minmax <- function(x, vmin, vmax, col_low = "white", col_high = "#2ca25f") {
+    if (!is.finite(x)) return(NA_character_)
+    if (!is.finite(vmin) || !is.finite(vmax)) return(NA_character_)
+    if (vmin == vmax) return(.col_lerp(col_low, col_high, 0.5))
+    t <- (x - vmin) / (vmax - vmin)
+    .col_lerp(col_low, col_high, t)
+  }
+
+  wide_num <- wide
+  for (cn in participant_cols) wide_num[[cn]] <- as.numeric(wide_num[[cn]])
+
+  wide_styled <- wide
+  for (i in seq_len(nrow(wide))) {
+    metric <- wide$Metric[i]
+    vals <- as.numeric(wide_num[i, participant_cols, drop = TRUE])
+    vmin <- suppressWarnings(min(vals, na.rm = TRUE))
+    vmax <- suppressWarnings(max(vals, na.rm = TRUE))
+
+    for (cn in participant_cols) {
+      x <- wide_num[[cn]][i]
+      if (!is.finite(x)) {
+        wide_styled[[cn]][i] <- ""
+        next
+      }
+
+      bg <- if (metric == "p(S0)") {
+        .col_diverging(x, vmin = vmin, mid = 0.5, vmax = vmax, col_low = "firebrick", col_high = "dodgerblue")
+      } else if (metric == "p(S1)") {
+        .col_diverging(x, vmin = vmin, mid = 0.5, vmax = vmax, col_low = "dodgerblue", col_high = "firebrick")
+      } else {
+        .col_minmax(x, vmin = vmin, vmax = vmax, col_low = "white", col_high = "#2ca25f")
+      }
+
+      wide_styled[[cn]][i] <- kableExtra::cell_spec(sprintf("%.3f", x), background = bg, color = "black")
+    }
+  }
+
+  tbl <- wide_styled %>%
+    knitr::kable(
+      format = "html",
+      escape = FALSE,
       caption = "Table 8.1: Participant Behavioral Summary (Wide)"
     ) %>%
     kable_styling(
