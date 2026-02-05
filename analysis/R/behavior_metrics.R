@@ -748,7 +748,10 @@ compute_feedback_condition_proportions_by_subject <- function(task_data, valid_o
     dplyr::arrange(participant_id, condition_label)
 }
 
-compute_wsls_by_outcome_subject <- function(task_data) {
+compute_wsls_by_outcome_subject <- function(task_data,
+                                            enforce_consecutive_trials = TRUE,
+                                            exclude_fast_rt_wsls = TRUE,
+                                            fast_rt_threshold = 0.15) {
   #####
   # Compute win/lose-stay probabilities by previous-trial outcome type (subject-level)
   #
@@ -758,13 +761,32 @@ compute_wsls_by_outcome_subject <- function(task_data) {
   # - Non-Salient Win: reward[t-1] == 1 & condition[t-1] == 0
   # - Loss: reward[t-1] == 0 (condition ignored)
   #
-  # Trials are included if choice[t] and choice[t-1] are non-missing, and reward[t-1]
-  # is non-missing. For win trials, condition[t-1] must be 0/1.
+  # Best-practice inclusion rules
+  # ----
+  # We only count opportunities where the behavioral sequence is unambiguous:
+  # - choice[t] is non-missing
+  # - choice[t-1] is non-missing
+  # - reward[t-1] is non-missing
+  # - for win trials: condition[t-1] must be 0/1 (non-salient/salient)
+  # - if enforce_consecutive_trials: require trial[t] == trial[t-1] + 1
+  # - if exclude_fast_rt_wsls: require reaction_time[t] and reaction_time[t-1]
+  #   to be non-missing and >= fast_rt_threshold
+  #
+  # This means missed trials (choice == NA) break sequences: if trial t is missed,
+  # trial t+1 is *not* treated as "post-(t outcome)" and will only contribute again
+  # once a valid consecutive (t-1, t) pair exists.
   #
   # Parameters
   # ----
   # task_data : tibble
-  #     Cleaned task data containing: participant_id, trial, choice, reward, condition
+  #     Cleaned task data containing: participant_id, trial, choice, reward, condition, reaction_time
+  # enforce_consecutive_trials : logical
+  #     If TRUE (default), only count opportunities where trial[t] == trial[t-1] + 1
+  # exclude_fast_rt_wsls : logical
+  #     If TRUE (default), exclude WSLS opportunities where either trial t or trial t-1
+  #     has a "fast" reaction time (< fast_rt_threshold) or missing reaction_time.
+  # fast_rt_threshold : numeric
+  #     Threshold (seconds) for defining "fast" RTs (default: 0.15)
   #
   # Returns
   # ----
@@ -775,19 +797,28 @@ compute_wsls_by_outcome_subject <- function(task_data) {
   stopifnot("task_data must have participant_id" = "participant_id" %in% names(task_data))
   stopifnot("task_data must have trial" = "trial" %in% names(task_data))
   stopifnot("task_data must have choice" = "choice" %in% names(task_data))
+  stopifnot("task_data must have reaction_time" = "reaction_time" %in% names(task_data))
   stopifnot("task_data must have reward" = "reward" %in% names(task_data))
   stopifnot("task_data must have condition" = "condition" %in% names(task_data))
+  stopifnot("enforce_consecutive_trials must be logical" = is.logical(enforce_consecutive_trials))
+  stopifnot("exclude_fast_rt_wsls must be logical" = is.logical(exclude_fast_rt_wsls))
+  stopifnot("fast_rt_threshold must be numeric scalar" =
+              is.numeric(fast_rt_threshold) && length(fast_rt_threshold) == 1 && is.finite(fast_rt_threshold))
 
   df <- task_data %>%
-    dplyr::filter(!is.na(choice)) %>%
     dplyr::arrange(participant_id, trial) %>%
     dplyr::group_by(participant_id) %>%
     dplyr::mutate(
+      prev_trial = dplyr::lag(trial, 1),
       prev_choice = dplyr::lag(choice, 1),
+      prev_rt = dplyr::lag(reaction_time, 1),
       prev_reward = dplyr::lag(reward, 1),
       prev_condition = dplyr::lag(condition, 1)
     ) %>%
     dplyr::ungroup() %>%
+    # Current trial must be observed (not missed)
+    dplyr::filter(!is.na(choice)) %>%
+    # Conditioning trial (t-1) must be observed and have an outcome
     dplyr::filter(!is.na(prev_choice) & !is.na(prev_reward)) %>%
     dplyr::mutate(
       stayed = (choice == prev_choice),
@@ -797,7 +828,22 @@ compute_wsls_by_outcome_subject <- function(task_data) {
         prev_reward == 0 ~ "Loss",
         TRUE ~ NA_character_
       )
-    ) %>%
+    )
+
+  if (isTRUE(exclude_fast_rt_wsls)) {
+    df <- df %>%
+      dplyr::filter(
+        !is.na(reaction_time) & reaction_time >= fast_rt_threshold,
+        !is.na(prev_rt) & prev_rt >= fast_rt_threshold
+      )
+  }
+
+  if (isTRUE(enforce_consecutive_trials)) {
+    df <- df %>%
+      dplyr::filter(!is.na(prev_trial) & trial == prev_trial + 1L)
+  }
+
+  df <- df %>%
     dplyr::filter(!is.na(outcome_type))
 
   df %>%
@@ -811,25 +857,55 @@ compute_wsls_by_outcome_subject <- function(task_data) {
     dplyr::arrange(participant_id, outcome_type)
 }
 
-compute_prp_median_by_outcome_subject <- function(task_data) {
+compute_prp_median_by_outcome_subject <- function(task_data,
+                                                  enforce_consecutive_trials = TRUE,
+                                                  require_valid_choice_conditioning = TRUE,
+                                                  exclude_fast_rt_prp = TRUE,
+                                                  fast_rt_threshold = 0.15) {
   #####
-  # Compute post-outcome pauses (PRP) as median RT on next trial (subject-level)
+  # Compute post-outcome pauses (PRP) as median RT on the next trial (subject-level)
   #
-  # For each participant, compute the median reaction time on trial t, grouped by
-  # outcome type on the previous trial (t-1):
-  # - Post-Salient Win: reward[t-1] == 1 & condition[t-1] == 1
-  # - Post-Non-Salient Win: reward[t-1] == 1 & condition[t-1] == 0
-  # - Post-Loss: reward[t-1] == 0
+  # For each participant, compute the median reaction time on trial t+1, grouped by
+  # the outcome type on the conditioning trial t:
+  # - Post-Salient Win: reward[t] == 1 & condition[t] == 1
+  # - Post-Non-Salient Win: reward[t] == 1 & condition[t] == 0
+  # - Post-Loss: reward[t] == 0
   #
-  # Included trials require:
-  # - choice[t] non-missing (valid choice)
-  # - reaction_time[t] non-missing (PRP measure)
-  # - reward[t-1] non-missing, and for wins condition[t-1] in {0,1}
+  # This implementation uses an explicit next-trial mapping (via lead()),
+  # rather than filtering rows and using lag(). This avoids unintentionally
+  # pairing PRPs with the previous *retained* row when there are missed trials
+  # or missing RT values.
+  #
+  # Inclusion rules
+  # ----
+  # Conditioning trial (t) inclusion:
+  # - reward[t] must be non-missing
+  # - if reward[t] == 1 (win): condition[t] must be 0/1 (non-salient/salient)
+  # - if require_valid_choice_conditioning: choice[t] must be non-missing
+  #
+  # PRP trial (t+1) inclusion:
+  # - choice[t+1] must be non-missing (i.e., not a missed choice)
+  # - reaction_time[t+1] must be non-missing
+  # - if exclude_fast_rt_prp: reaction_time[t+1] must be >= fast_rt_threshold
+  #
+  # Edge handling
+  # ----
+  # - Last trial per participant is automatically excluded (no t+1 to compute PRP)
+  # - If enforce_consecutive_trials: only pairs where trial[t+1] == trial[t] + 1
+  #   are included (guards against gaps/missing rows in the dataset).
   #
   # Parameters
   # ----
   # task_data : tibble
   #     Cleaned task data containing: participant_id, trial, choice, reaction_time, reward, condition
+  # enforce_consecutive_trials : logical
+  #     If TRUE (default), require trial[t+1] == trial[t] + 1 for PRP pairing
+  # require_valid_choice_conditioning : logical
+  #     If TRUE (default), require a non-missing choice on the conditioning trial t
+  # exclude_fast_rt_prp : logical
+  #     If TRUE, exclude PRP trials with reaction_time[t+1] < fast_rt_threshold
+  # fast_rt_threshold : numeric
+  #     Threshold (seconds) for defining "fast" RTs (default: 0.15)
   #
   # Returns
   # ----
@@ -843,31 +919,53 @@ compute_prp_median_by_outcome_subject <- function(task_data) {
   stopifnot("task_data must have reaction_time" = "reaction_time" %in% names(task_data))
   stopifnot("task_data must have reward" = "reward" %in% names(task_data))
   stopifnot("task_data must have condition" = "condition" %in% names(task_data))
+  stopifnot("enforce_consecutive_trials must be logical" = is.logical(enforce_consecutive_trials))
+  stopifnot("require_valid_choice_conditioning must be logical" = is.logical(require_valid_choice_conditioning))
+  stopifnot("exclude_fast_rt_prp must be logical" = is.logical(exclude_fast_rt_prp))
+  stopifnot("fast_rt_threshold must be numeric scalar" =
+              is.numeric(fast_rt_threshold) && length(fast_rt_threshold) == 1 && is.finite(fast_rt_threshold))
 
   df <- task_data %>%
-    dplyr::filter(!is.na(choice) & !is.na(reaction_time)) %>%
     dplyr::arrange(participant_id, trial) %>%
     dplyr::group_by(participant_id) %>%
     dplyr::mutate(
-      prev_reward = dplyr::lag(reward, 1),
-      prev_condition = dplyr::lag(condition, 1)
-    ) %>%
-    dplyr::ungroup() %>%
-    dplyr::filter(!is.na(prev_reward)) %>%
-    dplyr::mutate(
+      next_trial = dplyr::lead(trial, 1),
+      prp_choice = dplyr::lead(choice, 1),
+      prp_rt = dplyr::lead(reaction_time, 1),
       outcome_type_prp = dplyr::case_when(
-        prev_reward == 1 & prev_condition == 1 ~ "Post-Salient Win",
-        prev_reward == 1 & prev_condition == 0 ~ "Post-Non-Salient Win",
-        prev_reward == 0 ~ "Post-Loss",
+        reward == 1 & condition == 1 ~ "Post-Salient Win",
+        reward == 1 & condition == 0 ~ "Post-Non-Salient Win",
+        reward == 0 ~ "Post-Loss",
         TRUE ~ NA_character_
       )
     ) %>%
-    dplyr::filter(!is.na(outcome_type_prp))
+    dplyr::ungroup()
+
+  # Conditioning-trial validity (t)
+  df <- df %>%
+    dplyr::filter(!is.na(outcome_type_prp)) %>%
+    dplyr::filter(!is.na(reward)) # explicit, even though outcome_type_prp already implies this
+
+  if (isTRUE(require_valid_choice_conditioning)) {
+    df <- df %>% dplyr::filter(!is.na(choice))
+  }
+
+  # PRP-trial validity (t+1)
+  df <- df %>%
+    dplyr::filter(!is.na(prp_choice) & !is.na(prp_rt))
+
+  if (isTRUE(exclude_fast_rt_prp)) {
+    df <- df %>% dplyr::filter(prp_rt >= fast_rt_threshold)
+  }
+
+  if (isTRUE(enforce_consecutive_trials)) {
+    df <- df %>% dplyr::filter(!is.na(next_trial) & next_trial == trial + 1L)
+  }
 
   df %>%
     dplyr::group_by(participant_id, outcome_type_prp) %>%
     dplyr::summarise(
-      median_prp = stats::median(reaction_time, na.rm = TRUE),
+      median_prp = stats::median(prp_rt, na.rm = TRUE),
       n_trials = dplyr::n(),
       .groups = "drop"
     ) %>%

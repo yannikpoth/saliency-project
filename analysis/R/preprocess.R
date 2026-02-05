@@ -6,15 +6,15 @@ preprocess <- function(data_raw) {
   # minimal cleaning: validation, filtering to main trials, type conversions,
   # and adding derived columns needed for analysis.
   #
-  # Parameters
-  # ----------
+ # Parameters
+ # ----
   # data_raw : list
-  #     Named list with 'task' and 'questionnaire' tibbles from io_read_raw()
+ #     Named list with 'task' and 'questionnaire' tibbles from io_read_raw()
   #
   # Returns
-  # -------
+ # ----
   # list
-  #     Named list with cleaned 'task' and 'questionnaire' tibbles
+ #     Named list with cleaned 'task' and 'questionnaire' tibbles
   #####
 
   task <- data_raw$task
@@ -64,6 +64,12 @@ prepare_stan_data <- function(task_data) {
   #
   # Converts long-format cleaned task data into Stan-compatible rectangular
   # arrays. Missing/excluded trials are coded as -9 (sentinel value).
+  #
+  # IMPORTANT CONVENTION
+  # - Trials are *compacted* within each subject: only valid trials are kept,
+  #   in chronological order, and written to columns 1:subTrials[subj].
+  # - All remaining columns (subTrials+1:maxTrials) are *padding* and remain -9.
+  # - This matches the Stan models, which iterate `triali in 1:subTrials[subi]`.
   # Matches format expected by rl_ncp_shift_persev_uniform.stan and related models.
   #
   # Parameters
@@ -88,7 +94,13 @@ prepare_stan_data <- function(task_data) {
   # Get sorted unique subjects for consistent ordering
   subj_ids <- sort(unique(task_data$participant_id))
   nSubs <- length(subj_ids)
-  maxTrials <- max(task_data$trial)
+
+  # maxTrials is the maximum number of recorded main-trial rows for any subject.
+  # (With 200 main trials, this should typically be 200, but we keep it data-driven.)
+  maxTrials <- task_data %>%
+    dplyr::count(participant_id, name = "n_trials_recorded") %>%
+    dplyr::pull("n_trials_recorded") %>%
+    max(na.rm = TRUE)
 
   # Initialize rectangular arrays with -9 sentinel value
   reward <- matrix(-9L, nrow = nSubs, ncol = maxTrials)
@@ -102,21 +114,30 @@ prepare_stan_data <- function(task_data) {
       dplyr::filter(participant_id == subj_ids[i]) %>%
       dplyr::arrange(trial)
 
-    # Count valid trials (non-missed)
-    subTrials[i] <- sum(!subj_data$missed)
+    # Define validity for RL likelihood/PPC: observed choice, reward, and (if present)
+    # salient feedback indicator must be in their valid ranges.
+    is_valid <- (!is.na(subj_data$choice) & subj_data$choice %in% c(0, 1)) &
+      (!is.na(subj_data$reward) & subj_data$reward %in% c(0, 1)) &
+      (!is.na(subj_data$condition) & subj_data$condition %in% c(0, 1))
 
-    # Fill trial data
-    for (j in seq_len(nrow(subj_data))) {
-      trial_idx <- subj_data$trial[j]
+    valid_rows <- which(is_valid)
+    subTrials[i] <- length(valid_rows)
 
-      if (!subj_data$missed[j]) {
-        # Valid trial: convert and store
-        reward[i, trial_idx] <- as.integer(subj_data$reward[j])
-        choice[i, trial_idx] <- as.integer(subj_data$choice[j]) + 1L  # 0/1 → 1/2 for Stan
-        salient_feedback[i, trial_idx] <- as.integer(subj_data$condition[j])
-      }
-      # Missed trials remain -9
+    if (subTrials[i] > 0) {
+      # Compact valid trials into columns 1:subTrials (padding stays -9)
+      reward[i, seq_len(subTrials[i])] <- as.integer(subj_data$reward[valid_rows])
+      choice[i, seq_len(subTrials[i])] <- as.integer(subj_data$choice[valid_rows]) + 1L  # 0/1 → 1/2 for Stan
+      salient_feedback[i, seq_len(subTrials[i])] <- as.integer(subj_data$condition[valid_rows])
     }
+  }
+
+  if (any(subTrials < 1L)) {
+    bad_ids <- subj_ids[subTrials < 1L]
+    stop(
+      "prepare_stan_data(): Found subjects with 0 valid trials after filtering. ",
+      "These cannot be passed to Stan because subTrials has <lower=1>. ",
+      "Subject IDs: ", paste(bad_ids, collapse = ", ")
+    )
   }
 
   list(

@@ -304,8 +304,11 @@ diagnostics_plot_mcmc <- function(fit, output_dir) {
 
     tryCatch({
       pp_vals <- rstan::extract(fit, pars = "pp_choice_stim2_prob")$pp_choice_stim2_prob
-      # Remove NAs and Sentinel values (-9)
-      pp_valid <- pp_vals[pp_vals >= 0 & pp_vals <= 1]
+      # PPC SUMMARY CONVENTION (sentinel + padding)
+      # - Stan models encode missing/padded trials as -9.
+      # - PPC summaries must exclude these sentinel entries *and* any out-of-range
+      #   values. (After explicit initialization in Stan, padded trials are -9.)
+      pp_valid <- pp_vals[!is.na(pp_vals) & pp_vals != -9.0 & pp_vals >= 0 & pp_vals <= 1]
 
       if (length(pp_valid) > 0) {
         # Use .data$prob to avoid 'no visible binding' note

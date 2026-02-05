@@ -219,6 +219,12 @@ generated quantities {
   real pp_choice_stim2_prob[nSubs, maxTrials];
 
   for (subi in 1:nSubs) {
+    // Initialize ALL entries to sentinel so padded trials are well-defined.
+    for (t in 1:maxTrials) {
+      predicted_choices[subi, t] = -9;
+      pp_choice_stim2_prob[subi, t] = -9.0;
+    }
+
     vector[2] qval_gq = rep_vector(0.5, 2);
     real pe_gq;
     log_lik[subi] = 0;

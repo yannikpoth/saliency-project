@@ -10,8 +10,8 @@ RUN_MODELS <- TRUE  # Run reinforcement learning model fitting
 # ========== Modeling Policy ==========
 # Professor preference (Jan): always use a 2-chain approach.
 STAN_CHAINS <- 2
-STAN_ITER <- 10000
-STAN_WARMUP <- 8000
+STAN_ITER <- 12000
+STAN_WARMUP <- 10000
 # =====================================
 
 # ========== Initialization ==========
@@ -100,7 +100,11 @@ if (RUN_EDA) {
   # Choice strategies
   message("Computing choice strategy metrics (WSLS, PRP)...")
   wsls_by_outcome_subj <- compute_wsls_by_outcome_subject(data_proc$task)
-  prp_by_outcome_subj <- compute_prp_median_by_outcome_subject(data_proc$task)
+  prp_by_outcome_subj <- compute_prp_median_by_outcome_subject(
+    data_proc$task,
+    exclude_fast_rt_prp = TRUE,
+    fast_rt_threshold = 0.15
+  )
   wsls_test <- test_wsls_salient_vs_nonsalient(wsls_by_outcome_subj)
   wsls_loss_vs_wins_test <- test_wsls_loss_vs_wins(wsls_by_outcome_subj)
   prp_test <- test_prp_salient_vs_nonsalient(prp_by_outcome_subj)
@@ -260,7 +264,7 @@ if (RUN_MODELS) {
       model_name,
       stan_data = stan_data,
       fit_dir = "analysis/outputs/fits",
-      force_refit = FALSE,
+      force_refit = TRUE,
       timestamp = TIMESTAMP,
       chains = STAN_CHAINS,
       iter = STAN_ITER,

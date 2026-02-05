@@ -551,10 +551,10 @@ rl_get_init_function <- function(stan_data = NULL) {
 rl_fit_single <- function(model_name,
                           stan_data,
                           chains = 2,
-                          iter = 10000,
-                          warmup = 8000,
-                          adapt_delta = 0.999,
-                          max_treedepth = 14,
+                          iter = 12000,
+                          warmup = 10000,
+                          adapt_delta = 0.8,
+                          max_treedepth = 10,
                           seed = 123,
                           verbose = TRUE) {
   #####

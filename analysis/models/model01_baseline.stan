@@ -116,6 +116,12 @@ generated quantities {
   real pp_choice_stim2_prob[nSubs, maxTrials]; // Simulated prob of choosing stimulus 2
 
   for (subi in 1:nSubs) {
+    // Initialize ALL entries to sentinel so padded trials are well-defined.
+    for (t in 1:maxTrials) {
+      predicted_choices[subi, t] = -9;
+      pp_choice_stim2_prob[subi, t] = -9.0;
+    }
+
     // Initialize Q-values and log-likelihood for this subject
     vector[2] qval_gq = rep_vector(0.5, 2);
     real pe_gq;
