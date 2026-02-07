@@ -17,9 +17,8 @@ All models follow the professor's updated specifications:
 - **Group-level means** (alpha, beta): `uniform(-3, 3)` ⚠️ Changed from (-4, 4)
 - **All SD priors**: `uniform(0.0001, 10)` ⚠️ Changed from (0.001, 3)
 - **Shift priors** (alpha_shift, kappa_shift): `normal(0, 1)` ✓
-- **Kappa prior**: `normal(0, 1)` with **Phi transformation** ✓
+- **Kappa prior**: `normal(0, 1)` on the **unconstrained (logit) scale** ✓
 - **Beta transformation**: `Phi(beta_raw) * 10` ✓
-- **Kappa transformation**: `Phi(kappa_raw)` to [0, 1] scale ✓
 
 ## Factorial Design: 6 Models
 
@@ -99,13 +98,13 @@ All models follow the professor's updated specifications:
 ### Kappa Shift
 - Applied to **choice policy** (perseveration bonus)
 - Modulated by **previous trial's feedback salience**
-- Formula: `effective_kappa = Phi(kappa_raw + kappa_shift_raw)` when previous was salient
+- Formula: `effective_kappa = kappa_raw + kappa_shift_raw` when previous was salient
 - Adds bonus to previously chosen option
 
-### Phi Transformations
+### Transformations
 - `alpha`: `Phi(alpha_raw)` → [0, 1]
 - `beta`: `Phi(beta_raw) * 10` → [0, 10]
-- `kappa`: `Phi(kappa_raw)` → [0, 1]
+- `kappa`: modeled on the logit scale (unconstrained; can be negative)
 
 ## Model Comparison Strategy
 

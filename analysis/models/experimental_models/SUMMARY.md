@@ -21,10 +21,12 @@ beta_mu_raw ~ uniform(-3, 3);         // Narrower range
 alpha_sd_raw ~ uniform(0.0001, 10);   // Much wider upper bound
 ```
 
-### 2. Kappa Transformation ⚠️ NEW
+### 2. Kappa Scale ⚠️ UPDATED
 ```stan
-// Kappa is now Phi-transformed (like alpha)
-kappa_subj_transformed[subi] = Phi(kappa_subj_raw[subi]);  // → [0, 1]
+// Kappa is modeled on the logit scale (unconstrained)
+// This allows both directions (positive/negative stickiness) without pre-imposing
+// an effect direction via constraints or transforms.
+choice_logits[prev_choice_idx] += kappa;  // can be < 0 or > 0
 ```
 
 ### 3. Kappa Shift Implementation ⚠️ NEW PARAMETER
@@ -86,9 +88,9 @@ alpha shift kann normal 0,1 bleiben
 → Kept alpha_shift_mu_raw ~ normal(0, 1) ✓
 
 ```
-kappa phi transformiert, normal prior für kappa
+kappa sollte nicht auf >=0 constrained sein, sondern gaussian prior um 0
 ```
-→ Kappa: Phi-transformed + normal(0,1) prior ✓
+→ Kappa: unconstrained + normal(0,1) prior centered at 0 ✓
 
 ```
 Beta Mu Multiplikation relaxen (z.B. 10 statt 4)

@@ -9,7 +9,8 @@ Notes:      - Factorial design model 10/12: Alpha shift + Kappa (NCP Version)
                 - All SDs: uniform(0.0001, 10)
                 - alpha_shift_mu_raw: normal(0, 1)
                 - kappa_mu_raw: normal(0, 1)
-            - Kappa is Phi-transformed to [0, 1] scale
+            - Kappa is NOT constrained; it is modeled on the logit scale
+              with a Gaussian prior centered at 0 (direction not pre-imposed)
 To do:      - Test and validate
 Comments:   - Tests both learning rate modulation and perseveration (no interaction)
 Sources:    Internal project files, Stan documentation
@@ -58,7 +59,6 @@ transformed parameters {
 
   // --- Transformed Subject-level Parameters (for use in the model) ---
   vector<lower=0, upper=10>[nSubs] beta_subj_transformed;  // Scaled beta
-  vector<lower=0, upper=1>[nSubs] kappa_subj_transformed; // Transformed kappa
 
   alpha_subj_raw = alpha_mu_raw + alpha_sd_raw * alpha_subj_raw_z;
   alpha_shift_subj_raw = alpha_shift_mu_raw + alpha_shift_sd_raw * alpha_shift_subj_raw_z;
@@ -67,7 +67,6 @@ transformed parameters {
 
   for (subi in 1:nSubs) {
     beta_subj_transformed[subi]  = Phi(beta_subj_raw[subi]) * 10.0; // Scale beta to [0, 10]
-    kappa_subj_transformed[subi] = Phi(kappa_subj_raw[subi]);       // Transform kappa to [0, 1]
   }
 }
 
@@ -94,7 +93,7 @@ model {
   // --- Likelihood Calculation ---
   for (subi in 1:nSubs) {
     real current_beta_subj  = beta_subj_transformed[subi];
-    real current_kappa_subj = kappa_subj_transformed[subi];
+    real current_kappa_subj = kappa_subj_raw[subi];
 
     // Initialize Q-values for this subject
     vector[2] qval = rep_vector(0.5, 2); // Q-values for two options
@@ -146,13 +145,13 @@ generated quantities {
   real<lower=0, upper=1> alpha_mu = Phi(alpha_mu_raw);
   real alpha_shift_mu_raw_gq = alpha_shift_mu_raw;
   real<lower=0, upper=10> beta_mu  = Phi(beta_mu_raw) * 10.0;
-  real<lower=0, upper=1> kappa_mu = Phi(kappa_mu_raw);
+  real kappa_mu = kappa_mu_raw;
 
   // --- Transformed/Raw Subject-level Parameters (for interpretation) ---
   vector<lower=0, upper=1>[nSubs] alpha;
   vector[nSubs] alpha_shift_subj_raw_gq;
   vector<lower=0, upper=10>[nSubs] beta;
-  vector<lower=0, upper=1>[nSubs] kappa;
+  vector[nSubs] kappa;
 
   // --- Interpretable Alpha Shift Parameters ---
   vector<lower=0, upper=1>[nSubs] alpha_learning_rate_salient_subj;
@@ -164,7 +163,7 @@ generated quantities {
     alpha[subi] = Phi(alpha_subj_raw[subi]);
     alpha_shift_subj_raw_gq[subi] = alpha_shift_subj_raw[subi];
     beta[subi]  = beta_subj_transformed[subi];
-    kappa[subi] = kappa_subj_transformed[subi];
+    kappa[subi] = kappa_subj_raw[subi];
 
     // Calculate interpretable shift components
     alpha_learning_rate_salient_subj[subi] = Phi(alpha_subj_raw[subi] + alpha_shift_subj_raw_gq[subi]);

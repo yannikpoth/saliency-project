@@ -10,7 +10,7 @@ Notes:      - Factorial design model 6/6: Full model with all parameters
                 - alpha_shift_mu_raw: normal(0, 1)
                 - kappa_mu_raw: normal(0, 1)
                 - kappa_shift_mu_raw: normal(0, 1)
-            - Kappa is Phi-transformed to [0, 1] scale
+            - Kappa is NOT constrained; it is modeled on the logit scale
             - Both alpha_shift and kappa_shift modulate based on salient feedback
             - Hierarchical structure with Centered Parameterization (CP)
 To do:      - Test and validate
@@ -127,9 +127,8 @@ model {
           } else {
             effective_raw_kappa = kappa_subj_raw[subi];
           }
-          // Transform effective kappa and add perseveration bonus
-          real trial_kappa_transformed = Phi(effective_raw_kappa);
-          choice_logits[prev_choice_idx] += trial_kappa_transformed;
+          // Add perseveration bonus (logit scale; kappa is unconstrained)
+          choice_logits[prev_choice_idx] += effective_raw_kappa;
         }
 
         choice[subi, triali] ~ categorical_logit(choice_logits);
@@ -153,14 +152,14 @@ generated quantities {
   real<lower=0, upper=1> alpha_mu = Phi(alpha_mu_raw);
   real alpha_shift_mu_raw_gq = alpha_shift_mu_raw;
   real<lower=0, upper=10> beta_mu  = Phi(beta_mu_raw) * 10.0;
-  real<lower=0, upper=1> kappa_mu = Phi(kappa_mu_raw);
+  real kappa_mu = kappa_mu_raw;
   real kappa_shift_mu_raw_gq = kappa_shift_mu_raw;
 
   // --- Transformed/Raw Subject-level Parameters (for interpretation) ---
   vector<lower=0, upper=1>[nSubs] alpha;
   vector[nSubs] alpha_shift_subj_raw_gq;
   vector<lower=0, upper=10>[nSubs] beta;
-  vector<lower=0, upper=1>[nSubs] kappa;
+  vector[nSubs] kappa;
   vector[nSubs] kappa_shift_subj_raw_gq;
 
   // --- Interpretable Shift Parameters ---
@@ -171,16 +170,16 @@ generated quantities {
   real interpretable_alpha_shift_mu;
 
   // Kappa shift
-  vector<lower=0, upper=1>[nSubs] kappa_perseveration_salient_subj;
+  vector[nSubs] kappa_perseveration_salient_subj;
   vector[nSubs] interpretable_kappa_shift_subj;
-  real<lower=0, upper=1> kappa_perseveration_salient_mu;
+  real kappa_perseveration_salient_mu;
   real interpretable_kappa_shift_mu;
 
   for (subi in 1:nSubs) {
     alpha[subi] = Phi(alpha_subj_raw[subi]);
     alpha_shift_subj_raw_gq[subi] = alpha_shift_subj_raw[subi];
     beta[subi]  = beta_subj_transformed[subi];
-    kappa[subi] = Phi(kappa_subj_raw[subi]);
+    kappa[subi] = kappa_subj_raw[subi];
     kappa_shift_subj_raw_gq[subi] = kappa_shift_subj_raw[subi];
 
     // Calculate interpretable alpha shift components
@@ -188,16 +187,16 @@ generated quantities {
     interpretable_alpha_shift_subj[subi] = alpha_learning_rate_salient_subj[subi] - alpha[subi];
 
     // Calculate interpretable kappa shift components
-    kappa_perseveration_salient_subj[subi] = Phi(kappa_subj_raw[subi] + kappa_shift_subj_raw_gq[subi]);
-    interpretable_kappa_shift_subj[subi] = kappa_perseveration_salient_subj[subi] - kappa[subi];
+    kappa_perseveration_salient_subj[subi] = kappa[subi] + kappa_shift_subj_raw_gq[subi];
+    interpretable_kappa_shift_subj[subi] = kappa_shift_subj_raw_gq[subi];
   }
 
   // Group level interpretable shifts
   alpha_learning_rate_salient_mu = Phi(alpha_mu_raw + alpha_shift_mu_raw_gq);
   interpretable_alpha_shift_mu = alpha_learning_rate_salient_mu - alpha_mu;
 
-  kappa_perseveration_salient_mu = Phi(kappa_mu_raw + kappa_shift_mu_raw_gq);
-  interpretable_kappa_shift_mu = kappa_perseveration_salient_mu - kappa_mu;
+  kappa_perseveration_salient_mu = kappa_mu + kappa_shift_mu_raw_gq;
+  interpretable_kappa_shift_mu = kappa_shift_mu_raw_gq;
 
   // --- Log-Likelihood Calculation (for LOOIC, WAIC) ---
   real log_lik[nSubs];
@@ -251,8 +250,7 @@ generated quantities {
           } else {
             gq_effective_raw_kappa = kappa_subj_raw[subi];
           }
-          real gq_trial_kappa_transformed = Phi(gq_effective_raw_kappa);
-          gq_choice_logits[prev_choice_idx_gq] += gq_trial_kappa_transformed;
+          gq_choice_logits[prev_choice_idx_gq] += gq_effective_raw_kappa;
         }
 
         vector[2] gq_choice_probs  = softmax(gq_choice_logits);
