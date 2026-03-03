@@ -19,20 +19,15 @@ renv/library/
 renv/
 *.rds
 
+# Processed data (regenerated from raw by analysis pipeline)
+data/processed/
+
 # Outputs (keep the folders, ignore contents)
 analysis/outputs/*
 !analysis/outputs/figs/.gitkeep
 !analysis/outputs/tables/.gitkeep
 
-# === Data rules (ignore heavy data; keep placeholders) ===
-# Ignore everything under raw/ except the readme and .gitkeep
-data/raw/**
-!data/raw/.gitkeep
-!data/raw/README_data.md
 
-# Ignore generated processed data; keep folder marker
-data/processed/**
-!data/processed/.gitkeep
 
 # Legacy and temp files
 legacy/*
