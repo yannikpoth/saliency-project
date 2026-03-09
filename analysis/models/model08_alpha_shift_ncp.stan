@@ -123,33 +123,28 @@ model {
 generated quantities {
   // --- Transformed Group-level Parameters (for interpretation) ---
   real<lower=0, upper=1> alpha_mu = Phi(alpha_mu_raw);
-  real alpha_shift_mu_raw_gq = alpha_shift_mu_raw;
   real<lower=0, upper=10> beta_mu  = Phi(beta_mu_raw) * 10.0;
+  real<lower=0, upper=1> alpha_salient_mu;
+  real alpha_shift_mu;
 
   // --- Transformed/Raw Subject-level Parameters (for interpretation) ---
   vector<lower=0, upper=1>[nSubs] alpha;
-  vector[nSubs] alpha_shift_subj_raw_gq;
   vector<lower=0, upper=10>[nSubs] beta;
-
-  // --- Interpretable Alpha Shift Parameters ---
-  vector<lower=0, upper=1>[nSubs] alpha_learning_rate_salient_subj;
-  vector[nSubs] interpretable_alpha_shift_subj;
-  real<lower=0, upper=1> alpha_learning_rate_salient_mu;
-  real interpretable_alpha_shift_mu;
+  vector<lower=0, upper=1>[nSubs] alpha_salient;
+  vector[nSubs] alpha_shift;
 
   for (subi in 1:nSubs) {
     alpha[subi] = Phi(alpha_subj_raw[subi]);
-    alpha_shift_subj_raw_gq[subi] = alpha_shift_subj_raw[subi];
     beta[subi]  = beta_subj_transformed[subi];
 
-    // Calculate interpretable shift components
-    alpha_learning_rate_salient_subj[subi] = Phi(alpha_subj_raw[subi] + alpha_shift_subj_raw_gq[subi]);
-    interpretable_alpha_shift_subj[subi] = alpha_learning_rate_salient_subj[subi] - alpha[subi];
+    // Export both salient-condition alpha and the interpretable salience effect.
+    alpha_salient[subi] = Phi(alpha_subj_raw[subi] + alpha_shift_subj_raw[subi]);
+    alpha_shift[subi] = alpha_salient[subi] - alpha[subi];
   }
 
-  // Group level interpretable shift
-  alpha_learning_rate_salient_mu = Phi(alpha_mu_raw + alpha_shift_mu_raw_gq);
-  interpretable_alpha_shift_mu = alpha_learning_rate_salient_mu - alpha_mu;
+  // Group-level salient alpha and interpretable shift.
+  alpha_salient_mu = Phi(alpha_mu_raw + alpha_shift_mu_raw);
+  alpha_shift_mu = alpha_salient_mu - alpha_mu;
 
   // --- Log-Likelihood Calculation (for LOOIC, WAIC) ---
   real log_lik[nSubs];
@@ -183,7 +178,7 @@ generated quantities {
         // Calculate effective raw alpha for GQ
         real gq_effective_raw_alpha;
         if (gq_salient_feedback == 1) {
-          gq_effective_raw_alpha = alpha_subj_raw[subi] + alpha_shift_subj_raw_gq[subi];
+          gq_effective_raw_alpha = alpha_subj_raw[subi] + alpha_shift_subj_raw[subi];
         } else {
           gq_effective_raw_alpha = alpha_subj_raw[subi];
         }

@@ -148,34 +148,29 @@ generated quantities {
   real<lower=0, upper=1> alpha_mu = Phi(alpha_mu_raw);
   real<lower=0, upper=10> beta_mu  = Phi(beta_mu_raw) * 10.0;
   real kappa_mu = kappa_mu_raw;
-  real kappa_shift_mu_raw_gq = kappa_shift_mu_raw;
+  real kappa_salient_mu;
+  real kappa_shift_mu;
 
   // --- Transformed/Raw Subject-level Parameters (for interpretation) ---
   vector<lower=0, upper=1>[nSubs] alpha;
   vector<lower=0, upper=10>[nSubs] beta;
   vector[nSubs] kappa;
-  vector[nSubs] kappa_shift_subj_raw_gq;
-
-  // --- Interpretable Kappa Shift Parameters ---
-  vector[nSubs] kappa_perseveration_salient_subj;
-  vector[nSubs] interpretable_kappa_shift_subj;
-  real kappa_perseveration_salient_mu;
-  real interpretable_kappa_shift_mu;
+  vector[nSubs] kappa_salient;
+  vector[nSubs] kappa_shift;
 
   for (subi in 1:nSubs) {
     alpha[subi] = Phi(alpha_subj_raw[subi]);
     beta[subi]  = beta_subj_transformed[subi];
     kappa[subi] = kappa_subj_raw[subi];
-    kappa_shift_subj_raw_gq[subi] = kappa_shift_subj_raw[subi];
 
-    // Calculate interpretable kappa shift components
-    kappa_perseveration_salient_subj[subi] = kappa[subi] + kappa_shift_subj_raw_gq[subi];
-    interpretable_kappa_shift_subj[subi] = kappa_shift_subj_raw_gq[subi];
+    // Export both salient-condition kappa and the interpretable salience effect.
+    kappa_salient[subi] = kappa[subi] + kappa_shift_subj_raw[subi];
+    kappa_shift[subi] = kappa_salient[subi] - kappa[subi];
   }
 
-  // Group level interpretable kappa shift
-  kappa_perseveration_salient_mu = kappa_mu + kappa_shift_mu_raw_gq;
-  interpretable_kappa_shift_mu = kappa_shift_mu_raw_gq;
+  // Group-level salient kappa and interpretable shift.
+  kappa_salient_mu = kappa_mu + kappa_shift_mu_raw;
+  kappa_shift_mu = kappa_salient_mu - kappa_mu;
 
   // --- Log-Likelihood Calculation (for LOOIC, WAIC) ---
   real log_lik[nSubs];
@@ -216,7 +211,7 @@ generated quantities {
           // Calculate effective raw kappa based on previous trial's salience
           real gq_effective_raw_kappa;
           if (prev_salient_feedback_gq == 1) {
-            gq_effective_raw_kappa = kappa_subj_raw[subi] + kappa_shift_subj_raw_gq[subi];
+            gq_effective_raw_kappa = kappa_subj_raw[subi] + kappa_shift_subj_raw[subi];
           } else {
             gq_effective_raw_kappa = kappa_subj_raw[subi];
           }
