@@ -31,4 +31,8 @@ analysis/outputs/*
 
 # Legacy and temp files
 legacy/*
+legacy/
 temp/*
+temp/
+tmp/*
+tmp/

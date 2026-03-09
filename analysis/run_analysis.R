@@ -264,7 +264,7 @@ if (RUN_MODELS) {
       model_name,
       stan_data = stan_data,
       fit_dir = "analysis/outputs/fits",
-      force_refit = TRUE,
+      force_refit = FALSE,
       timestamp = TIMESTAMP,
       chains = STAN_CHAINS,
       iter = STAN_ITER,

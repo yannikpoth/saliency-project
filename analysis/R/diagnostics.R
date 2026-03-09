@@ -29,7 +29,8 @@ diagnostics_run_all <- function(fit, model_name, timestamp = NULL) {
   message(sprintf("\n=== Running diagnostics for: %s ===", model_name))
 
   # 1. Setup directories
-  dirs <- io_get_model_output_dirs(model_name, timestamp)
+  io_get_model_output_dirs_fn <- get("io_get_model_output_dirs", mode = "function")
+  dirs <- io_get_model_output_dirs_fn(model_name, timestamp)
 
   # 2. Generate Summary Tables
   # General model diagnostics (Rhat, ESS, Divergences)
@@ -40,29 +41,35 @@ diagnostics_run_all <- function(fit, model_name, timestamp = NULL) {
   param_diag <- diagnostics_compute_parameter_stats(fit)
   readr::write_csv(param_diag, file.path(dirs$tables_diag, "parameter_diagnostics.csv"))
 
-  # Save problematic parameters specifically
-  # Use which() to explicitly select indices where the condition is TRUE,
-  # automatically dropping NAs or NaNs to prevent empty/NA rows.
-  high_rhat <- param_diag[which(param_diag$Rhat > 1.01), ]
-
+  # Problem-focused tables
+  high_rhat <- diagnostics_filter_problematic_parameters(
+    param_diag = param_diag,
+    metric_col = "Rhat",
+    threshold = 1.01,
+    direction = "high"
+  )
   if (nrow(high_rhat) > 0) {
-    # Exclude generated quantities and other nuisance parameters from the CSV as well
-    # (Same logic as for the plots)
-    exclude_patterns <- c(
-      "^pp_", "^predicted", "^log_lik", "^y_pred",
-      "_gq", "_transformed",
-      "_subj\\[",
-      "^(alpha|beta|kappa|alpha_shift|kappa_shift)\\["
-    )
-    keep_mask <- !grepl(paste(exclude_patterns, collapse = "|"), high_rhat$Parameter)
-    high_rhat <- high_rhat[keep_mask, ]
-
-    if (nrow(high_rhat) > 0) {
-      # Sort by Rhat descending (worst first)
-      high_rhat <- high_rhat[order(high_rhat$Rhat, decreasing = TRUE), ]
-      readr::write_csv(high_rhat, file.path(dirs$tables_diag, "problematic_rhat.csv"))
-    }
+    readr::write_csv(high_rhat, file.path(dirs$tables_diag, "problematic_rhat.csv"))
   }
+
+  low_ess <- diagnostics_filter_problematic_parameters(
+    param_diag = param_diag,
+    metric_col = "ESS",
+    threshold = 400,
+    direction = "low"
+  )
+  if (nrow(low_ess) > 0) {
+    readr::write_csv(low_ess, file.path(dirs$tables_diag, "problematic_ess.csv"))
+  }
+
+  sampler_settings <- diagnostics_extract_sampler_settings(fit)
+  readr::write_csv(sampler_settings, file.path(dirs$tables_diag, "sampler_settings.csv"))
+
+  sampler_param_summary <- diagnostics_summarize_sampler_params(fit)
+  readr::write_csv(
+    sampler_param_summary,
+    file.path(dirs$tables_diag, "sampler_parameter_summary.csv")
+  )
 
   # 3. Generate Plots
   diagnostics_plot_mcmc(fit, dirs$figs_diag)
@@ -71,8 +78,8 @@ diagnostics_run_all <- function(fit, model_name, timestamp = NULL) {
   diagnostics_plot_problematic(fit, param_diag, dirs$figs_diag)
 
   # 4. Print brief summary to console
-  message(sprintf("  Max Rhat: %.4f | Min ESS: %.0f",
-                  diag_summary$Max_Rhat, diag_summary$Min_ESS))
+  message(sprintf("  Max Rhat: %.4f | Min ESS: %.0f | Min BFMI: %.3f",
+                  diag_summary$Max_Rhat, diag_summary$Min_ESS, diag_summary$Min_BFMI))
   message(sprintf("  Divergences: %d", diag_summary$N_Divergent))
   message(sprintf("  Outputs saved to: %s", dirs$figs_diag))
 
@@ -80,6 +87,55 @@ diagnostics_run_all <- function(fit, model_name, timestamp = NULL) {
     summary = diag_summary,
     dirs = dirs
   ))
+}
+
+diagnostics_compute_bfmi <- function(fit = NULL, sampler_params = NULL) {
+  #####
+  # Compute per-chain BFMI values from Stan sampler output
+  #
+  # BFMI is a chain-level energy diagnostic, so the returned values are used
+  # both in the model summary and repeated in the parameter-level table for
+  # convenience when reviewing one CSV per fit.
+  #
+  # Parameters
+  # ----
+  # fit : stanfit or NULL
+  #     Fitted Stan model object. Used only when sampler_params is NULL.
+  # sampler_params : list or NULL
+  #     Output from rstan::get_sampler_params(). If NULL, extracted from fit.
+  #
+  # Returns
+  # ----
+  # numeric
+  #     Named numeric vector with one BFMI value per chain
+  #####
+
+  if (is.null(sampler_params)) {
+    if (is.null(fit)) {
+      stop("Either fit or sampler_params must be provided.")
+    }
+    sampler_params <- rstan::get_sampler_params(fit, inc_warmup = FALSE)
+  }
+
+  bfmi_vals <- vapply(seq_along(sampler_params), function(chain_idx) {
+    energy <- sampler_params[[chain_idx]][, "energy__"]
+    energy <- energy[!is.na(energy)]
+
+    if (length(energy) < 2) {
+      return(NA_real_)
+    }
+
+    energy_var <- stats::var(energy)
+    if (is.na(energy_var) || energy_var <= 0) {
+      return(NA_real_)
+    }
+
+    diff_energy <- diff(energy)
+    mean(diff_energy^2) / energy_var
+  }, numeric(1))
+
+  names(bfmi_vals) <- paste0("Chain_", seq_along(bfmi_vals))
+  bfmi_vals
 }
 
 diagnostics_compute_summary <- function(fit, model_name = "Model") {
@@ -123,12 +179,8 @@ diagnostics_compute_summary <- function(fit, model_name = "Model") {
   n_max_treedepth <- sum(sapply(sampler_params, function(x) sum(x[, "treedepth__"] >= max_td_control)))
 
   # BFMI (Energy)
-  bfmi_vals <- sapply(sampler_params, function(x) {
-    energy <- x[, "energy__"]
-    diff_energy <- diff(energy)
-    mean(diff_energy^2) / var(energy)
-  })
-  min_bfmi <- min(bfmi_vals)
+  bfmi_vals <- diagnostics_compute_bfmi(sampler_params = sampler_params)
+  min_bfmi <- if (all(is.na(bfmi_vals))) NA_real_ else min(bfmi_vals, na.rm = TRUE)
 
   data.frame(
     Model = model_name,
@@ -144,7 +196,7 @@ diagnostics_compute_summary <- function(fit, model_name = "Model") {
   )
 }
 
-diagnostics_compute_parameter_stats <- function(fit) {
+diagnostics_compute_parameter_stats <- function(fit, ess_threshold = 400, bfmi_threshold = 0.3) {
   #####
   # Compute detailed parameter-level diagnostics
   #
@@ -152,14 +204,22 @@ diagnostics_compute_parameter_stats <- function(fit) {
   # ----
   # fit : stanfit
   #     Fitted Stan model
+  # ess_threshold : numeric
+  #     ESS threshold used to flag parameters as low efficiency (default: 400)
+  # bfmi_threshold : numeric
+  #     BFMI threshold used to flag the fit-level energy diagnostic (default: 0.3)
   #
   # Returns
   # ----
   # data.frame
-  #     Table with Mean, SD, Rhat, ESS for key parameters
+  #     Table with Mean, SD, Rhat, ESS, and fit-level BFMI columns
   #####
 
   summ <- rstan::summary(fit)$summary
+  sampler_params <- rstan::get_sampler_params(fit, inc_warmup = FALSE)
+  bfmi_vals <- diagnostics_compute_bfmi(sampler_params = sampler_params)
+  min_bfmi <- if (all(is.na(bfmi_vals))) NA_real_ else min(bfmi_vals, na.rm = TRUE)
+  mean_bfmi <- if (all(is.na(bfmi_vals))) NA_real_ else mean(bfmi_vals, na.rm = TRUE)
 
   # Convert to data frame
   param_df <- as.data.frame(summ)
@@ -171,10 +231,23 @@ diagnostics_compute_parameter_stats <- function(fit) {
 
   # Add status flags
   result$Rhat_Status <- ifelse(result$Rhat < 1.01, "OK", "High")
-  result$ESS_Status <- ifelse(result$ESS > 400, "OK", "Low")
+  result$ESS_Status <- ifelse(result$ESS > ess_threshold, "OK", "Low")
+
+  # BFMI is chain-level, so attach the same fit-level values to each row.
+  result$Min_BFMI <- round(min_bfmi, 3)
+  result$Mean_BFMI <- round(mean_bfmi, 3)
+  result$BFMI_Status <- ifelse(result$Min_BFMI >= bfmi_threshold, "OK", "Low")
+
+  for (chain_name in names(bfmi_vals)) {
+    result[[paste0("BFMI_", chain_name)]] <- round(bfmi_vals[[chain_name]], 3)
+  }
 
   # Move Parameter to first column
-  result <- result[, c("Parameter", "Mean", "SD", "Rhat", "Rhat_Status", "ESS", "ESS_Status")]
+  bfmi_cols <- grep("^BFMI_Chain_", names(result), value = TRUE)
+  result <- result[, c(
+    "Parameter", "Mean", "SD", "Rhat", "Rhat_Status",
+    "ESS", "ESS_Status", "Min_BFMI", "Mean_BFMI", "BFMI_Status", bfmi_cols
+  )]
 
   # Filter out pp_choice and predicted_ parameters
   exclude_patterns <- c("^pp_choice", "^predicted_")
@@ -185,6 +258,254 @@ diagnostics_compute_parameter_stats <- function(fit) {
   # Just ensure row names are clean
   rownames(result) <- NULL
 
+  result
+}
+
+diagnostics_get_problematic_exclusion_patterns <- function() {
+  #####
+  # Return parameter-name patterns excluded from problem-focused tables
+  #
+  # Keeps the focused CSVs on interpretable parameters and omits large
+  # generated quantities or transformed subject-level vectors that are not
+  # useful for manual diagnosis.
+  #
+  # Parameters
+  # ----
+  # None
+  #
+  # Returns
+  # ----
+  # character
+  #     Vector of regular-expression patterns to exclude
+  #####
+
+  c(
+    "^pp_", "^predicted", "^log_lik", "^y_pred",
+    "_gq", "_transformed",
+    "_subj\\[",
+    "^(alpha|beta|kappa|alpha_shift|kappa_shift)\\["
+  )
+}
+
+diagnostics_filter_problematic_parameters <- function(param_diag,
+                                                      metric_col,
+                                                      threshold,
+                                                      direction = c("high", "low")) {
+  #####
+  # Filter and sort problematic parameters for focused diagnostics tables
+  #
+  # Applies the same nuisance-parameter exclusions used by the diagnostic
+  # plotting functions, then retains only rows above or below the supplied
+  # threshold depending on the requested direction.
+  #
+  # Parameters
+  # ----
+  # param_diag : data.frame
+  #     Parameter diagnostics table from diagnostics_compute_parameter_stats()
+  # metric_col : character
+  #     Column name used to determine problematic rows
+  # threshold : numeric
+  #     Threshold applied to metric_col
+  # direction : character
+  #     "high" keeps values greater than threshold; "low" keeps values lower
+  #
+  # Returns
+  # ----
+  # data.frame
+  #     Filtered and sorted subset of param_diag
+  #####
+
+  direction <- match.arg(direction)
+  exclude_patterns <- diagnostics_get_problematic_exclusion_patterns()
+
+  keep_mask <- !grepl(paste(exclude_patterns, collapse = "|"), param_diag$Parameter)
+  filtered <- param_diag[keep_mask, , drop = FALSE]
+
+  metric_vals <- filtered[[metric_col]]
+  idx <- if (direction == "high") {
+    which(metric_vals > threshold)
+  } else {
+    which(metric_vals < threshold)
+  }
+
+  problematic <- filtered[idx, , drop = FALSE]
+  if (nrow(problematic) == 0) {
+    rownames(problematic) <- NULL
+    return(problematic)
+  }
+
+  problematic <- problematic[order(
+    problematic[[metric_col]],
+    decreasing = identical(direction, "high")
+  ), , drop = FALSE]
+  rownames(problematic) <- NULL
+  problematic
+}
+
+diagnostics_flatten_named_list <- function(x, prefix = NULL) {
+  #####
+  # Flatten nested list settings into a named character vector
+  #
+  # This helper converts nested stan_args entries such as control lists into
+  # simple key-value pairs that can be written cleanly to CSV.
+  #
+  # Parameters
+  # ----
+  # x : list
+  #     Named list to flatten recursively
+  # prefix : character or NULL
+  #     Optional prefix for nested names
+  #
+  # Returns
+  # ----
+  # character
+  #     Named character vector of flattened key-value pairs
+  #####
+
+  flattened <- character(0)
+
+  for (nm in names(x)) {
+    value <- x[[nm]]
+    full_name <- if (is.null(prefix)) nm else paste(prefix, nm, sep = ".")
+
+    if (is.list(value)) {
+      flattened <- c(flattened, diagnostics_flatten_named_list(value, prefix = full_name))
+    } else if (length(value) == 0) {
+      flattened[full_name] <- NA_character_
+    } else {
+      flattened[full_name] <- paste(as.character(value), collapse = ", ")
+    }
+  }
+
+  flattened
+}
+
+diagnostics_extract_sampler_settings <- function(fit) {
+  #####
+  # Extract sampler settings from a stanfit object into tidy rows
+  #
+  # Shared settings are collapsed into one row, while chain-specific settings
+  # such as chain_id are retained as per-chain rows.
+  #
+  # Parameters
+  # ----
+  # fit : stanfit
+  #     Fitted Stan model object
+  #
+  # Returns
+  # ----
+  # data.frame
+  #     Tidy table with Scope, Chain, Setting, and Value columns
+  #####
+
+  stan_args <- fit@stan_args
+
+  settings_by_chain <- lapply(seq_along(stan_args), function(chain_idx) {
+    chain_settings <- stan_args[[chain_idx]]
+    chain_settings$init <- NULL
+    flattened <- diagnostics_flatten_named_list(chain_settings)
+
+    data.frame(
+      Scope = "chain",
+      Chain = chain_idx,
+      Setting = names(flattened),
+      Value = unname(flattened),
+      stringsAsFactors = FALSE
+    )
+  })
+
+  settings_df <- dplyr::bind_rows(settings_by_chain)
+
+  shared_rows <- list()
+  chain_rows <- list()
+  unique_settings <- unique(settings_df$Setting)
+
+  for (setting_name in unique_settings) {
+    subset_df <- settings_df[settings_df$Setting == setting_name, , drop = FALSE]
+    unique_values <- unique(subset_df$Value)
+
+    if (length(unique_values) == 1) {
+      shared_rows[[length(shared_rows) + 1L]] <- data.frame(
+        Scope = "shared",
+        Chain = NA_integer_,
+        Setting = setting_name,
+        Value = unique_values[[1]],
+        stringsAsFactors = FALSE
+      )
+    } else {
+      chain_rows[[length(chain_rows) + 1L]] <- subset_df
+    }
+  }
+
+  fit_level_rows <- data.frame(
+    Scope = "fit",
+    Chain = NA_integer_,
+    Setting = c("fit.chains", "fit.iter", "fit.warmup"),
+    Value = as.character(c(fit@sim$chains, fit@sim$iter, fit@sim$warmup)),
+    stringsAsFactors = FALSE
+  )
+
+  result <- dplyr::bind_rows(
+    fit_level_rows,
+    dplyr::bind_rows(shared_rows),
+    dplyr::bind_rows(chain_rows)
+  )
+
+  rownames(result) <- NULL
+  result
+}
+
+diagnostics_summarize_sampler_params <- function(fit) {
+  #####
+  # Summarize Stan sampler parameters across chains and overall
+  #
+  # Produces descriptive summaries for sampler diagnostics such as accept_stat,
+  # stepsize, treedepth, leapfrog counts, divergences, and energy.
+  #
+  # Parameters
+  # ----
+  # fit : stanfit
+  #     Fitted Stan model object
+  #
+  # Returns
+  # ----
+  # data.frame
+  #     Summary table with chain-wise and overall statistics per sampler column
+  #####
+
+  sampler_params <- rstan::get_sampler_params(fit, inc_warmup = FALSE)
+
+  summarize_matrix <- function(param_matrix, scope, chain = NA_integer_) {
+    param_names <- colnames(param_matrix)
+
+    dplyr::bind_rows(lapply(param_names, function(param_name) {
+      values <- param_matrix[, param_name]
+
+      data.frame(
+        Scope = scope,
+        Chain = chain,
+        Sampler_Parameter = param_name,
+        Mean = mean(values, na.rm = TRUE),
+        SD = stats::sd(values, na.rm = TRUE),
+        Median = stats::median(values, na.rm = TRUE),
+        Min = min(values, na.rm = TRUE),
+        Max = max(values, na.rm = TRUE),
+        P05 = stats::quantile(values, probs = 0.05, na.rm = TRUE, names = FALSE),
+        P95 = stats::quantile(values, probs = 0.95, na.rm = TRUE, names = FALSE),
+        stringsAsFactors = FALSE
+      )
+    }))
+  }
+
+  chain_summaries <- lapply(seq_along(sampler_params), function(chain_idx) {
+    summarize_matrix(sampler_params[[chain_idx]], scope = "chain", chain = chain_idx)
+  })
+
+  overall_matrix <- do.call(rbind, sampler_params)
+  overall_summary <- summarize_matrix(overall_matrix, scope = "overall", chain = NA_integer_)
+
+  result <- dplyr::bind_rows(overall_summary, dplyr::bind_rows(chain_summaries))
+  rownames(result) <- NULL
   result
 }
 
@@ -311,8 +632,9 @@ diagnostics_plot_mcmc <- function(fit, output_dir) {
       pp_valid <- pp_vals[!is.na(pp_vals) & pp_vals != -9.0 & pp_vals >= 0 & pp_vals <= 1]
 
       if (length(pp_valid) > 0) {
-        # Use .data$prob to avoid 'no visible binding' note
-        p_ppc <- ggplot2::ggplot(data.frame(prob = pp_valid), ggplot2::aes(x = .data$prob)) +
+        ppc_df <- data.frame(prob = pp_valid)
+        prob <- NULL
+        p_ppc <- ggplot2::ggplot(ppc_df, ggplot2::aes(x = prob)) +
           ggplot2::geom_histogram(bins = 50, fill = "skyblue", color = "black") +
           ggplot2::labs(title = "PPC: Predicted Choice Probabilities (Stim 2)",
                         x = "Probability", y = "Count") +
@@ -359,12 +681,7 @@ diagnostics_plot_problematic <- function(fit, param_diag, output_dir) {
   # - Generated quantities/transformed suffixes (_gq, _transformed)
   # - Transformed subject vectors ending in _subj[...] (keep _subj_raw[...])
   # - Transformed base vectors like alpha[...] (keep alpha_mu, alpha_raw, etc.)
-  exclude_patterns <- c(
-    "^pp_", "^predicted", "^log_lik", "^y_pred",
-    "_gq", "_transformed",
-    "_subj\\[",
-    "^(alpha|beta|kappa|alpha_shift|kappa_shift)\\["
-  )
+  exclude_patterns <- diagnostics_get_problematic_exclusion_patterns()
   keep_mask <- !grepl(paste(exclude_patterns, collapse = "|"), prob_params$Parameter)
   prob_params <- prob_params[keep_mask, ]
 
