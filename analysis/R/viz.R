@@ -310,7 +310,7 @@ viz_extract_posterior_data <- function(fit, model_name) {
   #     Returns empty data frame if no target parameters found.
   #####
 
-  param_order <- c("alpha_mu", "beta_mu", "interpretable_alpha_shift_mu", "kappa_mu", "interpretable_kappa_shift_mu")
+  param_order <- c("alpha_mu", "beta_mu", "alpha_shift_mu", "kappa_mu", "kappa_shift_mu")
   avail_pars <- names(fit)
   pars_to_get <- intersect(param_order, avail_pars)
 
@@ -394,14 +394,14 @@ viz_posterior_densities_grid <- function(data_list, output_dir) {
   )
 
   # Parameter order and labels
-  param_order <- c("alpha_mu", "beta_mu", "interpretable_alpha_shift_mu", "kappa_mu", "interpretable_kappa_shift_mu")
+  param_order <- c("alpha_mu", "beta_mu", "alpha_shift_mu", "kappa_mu", "kappa_shift_mu")
 
   param_labels <- c(
     "alpha_mu" = "alpha[mu]",
     "beta_mu" = "beta[mu]",
-    "interpretable_alpha_shift_mu" = "alpha[shift]~(mu)",
+    "alpha_shift_mu" = "alpha[shift]~(mu)",
     "kappa_mu" = "kappa[mu]",
-    "interpretable_kappa_shift_mu" = "kappa[shift]~(mu)"
+    "kappa_shift_mu" = "kappa[shift]~(mu)"
   )
 
   # 2. Extract Data

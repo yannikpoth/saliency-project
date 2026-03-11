@@ -283,7 +283,7 @@ diagnostics_get_problematic_exclusion_patterns <- function() {
     "^pp_", "^predicted", "^log_lik", "^y_pred",
     "_gq", "_transformed",
     "_subj\\[",
-    "^(alpha|beta|kappa|alpha_shift|kappa_shift)\\["
+    "^(alpha|beta|kappa|alpha_salient|alpha_shift|kappa_salient|kappa_shift)\\["
   )
 }
 

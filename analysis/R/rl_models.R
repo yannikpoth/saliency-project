@@ -899,7 +899,11 @@ rl_compare_models <- function(fit_list,
 # ========== Parameter Extraction ==========
 
 rl_extract_params <- function(fit,
-                              params = c("alpha_mu", "beta_mu", "alpha_shift_mu", "kappa_mu"),
+                              params = c(
+                                "alpha_mu", "alpha_salient_mu", "alpha_shift_mu",
+                                "beta_mu",
+                                "kappa_mu", "kappa_salient_mu", "kappa_shift_mu"
+                              ),
                               probs = c(0.025, 0.25, 0.5, 0.75, 0.975)) {
   #####
   # Extract and summarize key parameters from fitted model
@@ -912,7 +916,8 @@ rl_extract_params <- function(fit,
   # fit : stanfit
   #     Fitted Stan model object
   # params : character vector
-  #     Names of parameters to extract (default: main group-level means)
+  #     Names of parameters to extract (default: key group-level parameters,
+  #     including salient-condition totals and salience shifts where available)
   # probs : numeric vector
   #     Quantiles to compute (default: c(0.025, 0.25, 0.5, 0.75, 0.975))
   #
