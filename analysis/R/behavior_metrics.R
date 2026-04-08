@@ -857,6 +857,641 @@ compute_wsls_by_outcome_subject <- function(task_data,
     dplyr::arrange(participant_id, outcome_type)
 }
 
+glmm_prepare_stay_trial_level <- function(task_data,
+                                          enforce_consecutive_trials = TRUE,
+                                          exclude_fast_rt = TRUE,
+                                          fast_rt_threshold = 0.15) {
+  #####
+  # Prepare trial-level data for GLMM of stay behavior by previous outcome
+  #
+  # Constructs a trial-level dataset where each row represents a valid (t-1, t)
+  # decision pair for modeling P(stay_t | outcome_{t-1}).
+  #
+  # This is aligned with the WSLS inclusion logic used in compute_wsls_by_outcome_subject().
+  # Missed trials break sequences and are not bridged.
+  #
+  # Inclusion rules
+  # ----
+  # - Current trial t must have non-missing choice.
+  # - Previous trial t-1 must have non-missing choice and reward.
+  # - Outcome type is derived from trial t-1:
+  #   - Salient Win: prev_reward == 1 & prev_condition == 1
+  #   - Non-Salient Win: prev_reward == 1 & prev_condition == 0
+  #   - Loss: prev_reward == 0
+  # - If enforce_consecutive_trials: require trial[t] == trial[t-1] + 1.
+  # - If exclude_fast_rt: require reaction_time[t] and reaction_time[t-1] to be
+  #   non-missing and >= fast_rt_threshold.
+  #
+  # Parameters
+  # ----
+  # task_data : tibble
+  #     Cleaned task data containing: participant_id, trial, choice, reward, condition, reaction_time
+  # enforce_consecutive_trials : logical
+  #     If TRUE (default), require consecutive trial numbering for (t-1, t) pairs
+  # exclude_fast_rt : logical
+  #     If TRUE (default), exclude pairs with fast/missing RT on either t-1 or t
+  # fast_rt_threshold : numeric
+  #     Threshold (seconds) for defining fast RTs (default: 0.15)
+  #
+  # Returns
+  # ----
+  # tibble
+  #     Trial-level GLMM data with columns:
+  #     participant_id, trial, outcome_type, stayed, trial_scaled
+  #####
+  stopifnot("task_data must have participant_id" = "participant_id" %in% names(task_data))
+  stopifnot("task_data must have trial" = "trial" %in% names(task_data))
+  stopifnot("task_data must have choice" = "choice" %in% names(task_data))
+  stopifnot("task_data must have reaction_time" = "reaction_time" %in% names(task_data))
+  stopifnot("task_data must have reward" = "reward" %in% names(task_data))
+  stopifnot("task_data must have condition" = "condition" %in% names(task_data))
+  stopifnot("enforce_consecutive_trials must be logical" = is.logical(enforce_consecutive_trials))
+  stopifnot("exclude_fast_rt must be logical" = is.logical(exclude_fast_rt))
+  stopifnot("fast_rt_threshold must be numeric scalar" =
+              is.numeric(fast_rt_threshold) && length(fast_rt_threshold) == 1 && is.finite(fast_rt_threshold))
+
+  df <- task_data %>%
+    dplyr::arrange(participant_id, trial) %>%
+    dplyr::group_by(participant_id) %>%
+    dplyr::mutate(
+      prev_trial = dplyr::lag(trial, 1),
+      prev_choice = dplyr::lag(choice, 1),
+      prev_rt = dplyr::lag(reaction_time, 1),
+      prev_reward = dplyr::lag(reward, 1),
+      prev_condition = dplyr::lag(condition, 1)
+    ) %>%
+    dplyr::ungroup() %>%
+    dplyr::filter(!is.na(choice)) %>%
+    dplyr::filter(!is.na(prev_choice) & !is.na(prev_reward)) %>%
+    dplyr::mutate(
+      stayed = (choice == prev_choice),
+      outcome_type = dplyr::case_when(
+        prev_reward == 1 & prev_condition == 1 ~ "Salient Win",
+        prev_reward == 1 & prev_condition == 0 ~ "Non-Salient Win",
+        prev_reward == 0 ~ "Loss",
+        TRUE ~ NA_character_
+      )
+    ) %>%
+    dplyr::filter(!is.na(outcome_type))
+
+  if (isTRUE(exclude_fast_rt)) {
+    df <- df %>%
+      dplyr::filter(
+        !is.na(reaction_time) & reaction_time >= fast_rt_threshold,
+        !is.na(prev_rt) & prev_rt >= fast_rt_threshold
+      )
+  }
+
+  if (isTRUE(enforce_consecutive_trials)) {
+    df <- df %>%
+      dplyr::filter(!is.na(prev_trial) & trial == prev_trial + 1L)
+  }
+
+  df %>%
+    dplyr::mutate(
+      participant_id = as.character(participant_id),
+      outcome_type = factor(outcome_type, levels = c("Loss", "Non-Salient Win", "Salient Win")),
+      stayed = as.integer(stayed),
+      trial_scaled = as.numeric(scale(trial))
+    ) %>%
+    dplyr::select(participant_id, trial, outcome_type, stayed, trial_scaled)
+}
+
+
+glmm_fit_stay_by_prev_outcome <- function(task_data,
+                                          enforce_consecutive_trials = TRUE,
+                                          exclude_fast_rt = TRUE,
+                                          fast_rt_threshold = 0.15,
+                                          optimizer = "bobyqa") {
+  #####
+  # Fit GLMM predicting stay behavior from previous outcome type
+  #
+  # Fits a logistic mixed-effects model:
+  # stayed ~ outcome_type + trial_scaled + (1 | participant_id)
+  #
+  # This is a model-agnostic complement to the preregistered WSLS t-tests.
+  #
+  # Parameters
+  # ----
+  # task_data : tibble
+  #     Cleaned task data
+  # enforce_consecutive_trials : logical
+  #     Passed to glmm_prepare_stay_trial_level() (default: TRUE)
+  # exclude_fast_rt : logical
+  #     Passed to glmm_prepare_stay_trial_level() (default: TRUE)
+  # fast_rt_threshold : numeric
+  #     Passed to glmm_prepare_stay_trial_level() (default: 0.15)
+  # optimizer : character
+  #     Optimizer name for lme4::glmerControl() (default: "bobyqa")
+  #
+  # Returns
+  # ----
+  # list
+  #     Named list with:
+  #     - data: trial-level data used for fitting
+  #     - fit: fitted glmer model
+  #     - tidy_or: broom.mixed::tidy table (odds ratios, 95% CI)
+  #####
+  if (!requireNamespace("lme4", quietly = TRUE)) {
+    stop("Package `lme4` is required for GLMMs. Please install it (e.g., via renv).")
+  }
+  if (!requireNamespace("broom.mixed", quietly = TRUE)) {
+    stop("Package `broom.mixed` is required for tidying GLMMs. Please install it (e.g., via renv).")
+  }
+
+  df <- glmm_prepare_stay_trial_level(
+    task_data = task_data,
+    enforce_consecutive_trials = enforce_consecutive_trials,
+    exclude_fast_rt = exclude_fast_rt,
+    fast_rt_threshold = fast_rt_threshold
+  )
+
+  fit <- lme4::glmer(
+    stayed ~ outcome_type + trial_scaled + (1 | participant_id),
+    data = df,
+    family = stats::binomial(),
+    control = lme4::glmerControl(optimizer = optimizer)
+  )
+
+  tidy_or <- broom.mixed::tidy(fit, conf.int = TRUE, exponentiate = TRUE)
+
+  list(data = df, fit = fit, tidy_or = tidy_or)
+}
+
+
+glmm_report_stay_by_prev_outcome <- function(task_data,
+                                             enforce_consecutive_trials = TRUE,
+                                             exclude_fast_rt = TRUE,
+                                             fast_rt_threshold = 0.15,
+                                             optimizer = "bobyqa") {
+  #####
+  # Create a structured, machine-readable report for the "stay" GLMM
+  #
+  # Fits the stay GLMM and returns a named list containing:
+  # - model specification/metadata
+  # - fixed effects (log-odds + OR)
+  # - random effects summary (SDs)
+  # - planned contrasts via emmeans (including Salient vs Non-Salient)
+  # - estimated marginal means (predicted probabilities)
+  #
+  # Parameters
+  # ----
+  # task_data : tibble
+  #     Cleaned task data
+  # enforce_consecutive_trials : logical
+  #     Passed to glmm_fit_stay_by_prev_outcome() (default: TRUE)
+  # exclude_fast_rt : logical
+  #     Passed to glmm_fit_stay_by_prev_outcome() (default: TRUE)
+  # fast_rt_threshold : numeric
+  #     Passed to glmm_fit_stay_by_prev_outcome() (default: 0.15)
+  # optimizer : character
+  #     Optimizer name for lme4::glmerControl() (default: "bobyqa")
+  #
+  # Returns
+  # ----
+  # list
+  #     Named list with elements:
+  #     specification, fixed_logit, fixed_or, random_effects, contrasts, emmeans_prob, notes
+  #####
+  if (!requireNamespace("lme4", quietly = TRUE)) {
+    stop("Package `lme4` is required for GLMMs. Please install it (e.g., via renv).")
+  }
+  if (!requireNamespace("broom.mixed", quietly = TRUE)) {
+    stop("Package `broom.mixed` is required for tidying GLMMs. Please install it (e.g., via renv).")
+  }
+  if (!requireNamespace("emmeans", quietly = TRUE)) {
+    stop("Package `emmeans` is required for planned contrasts. Please install it (e.g., via renv).")
+  }
+
+  fitted <- glmm_fit_stay_by_prev_outcome(
+    task_data = task_data,
+    enforce_consecutive_trials = enforce_consecutive_trials,
+    exclude_fast_rt = exclude_fast_rt,
+    fast_rt_threshold = fast_rt_threshold,
+    optimizer = optimizer
+  )
+
+  df <- fitted$data
+  fit <- fitted$fit
+
+  conv_msgs <- NULL
+  conv_warnings <- NULL
+  opt <- tryCatch(fit@optinfo, error = function(e) NULL)
+  if (!is.null(opt)) {
+    conv_msgs <- opt$conv$lme4$messages
+    conv_warnings <- opt$conv$lme4$warnings
+  }
+  conv_all <- c(conv_msgs, conv_warnings)
+  conv_all <- conv_all[!is.na(conv_all)]
+  conv_all <- unique(as.character(conv_all))
+  conv_str <- if (length(conv_all) == 0) "" else paste(conv_all, collapse = " | ")
+
+  specification <- list(
+    formula = "stay ~ outcome_type + trial_scaled + (1 | participant_id)",
+    family = "binomial(link = \"logit\")",
+    reference_level_outcome_type = "Loss",
+    n_observations = nrow(df),
+    n_participants = dplyr::n_distinct(df$participant_id),
+    optimizer = optimizer,
+    convergence_warnings = conv_str,
+    singular_fit = lme4::isSingular(fit, tol = 1e-4)
+  )
+
+  fixed_logit <- broom.mixed::tidy(fit, effects = "fixed", conf.int = TRUE, exponentiate = FALSE) %>%
+    dplyr::transmute(
+      term = .data$term,
+      estimate_logit = .data$estimate,
+      std.error = .data$std.error,
+      statistic = .data$statistic,
+      p.value = .data$p.value,
+      conf.low_logit = .data$conf.low,
+      conf.high_logit = .data$conf.high
+    )
+
+  fixed_or <- broom.mixed::tidy(fit, effects = "fixed", conf.int = TRUE, exponentiate = TRUE) %>%
+    dplyr::transmute(
+      term = .data$term,
+      odds_ratio = .data$estimate,
+      conf.low_or = .data$conf.low,
+      conf.high_or = .data$conf.high
+    )
+
+  vc <- lme4::VarCorr(fit)
+  re_sd <- attr(vc[["participant_id"]], "stddev")
+  random_effects <- tibble::tibble(
+    group = "participant_id",
+    term = "sd__(Intercept)",
+    estimate = unname(re_sd[[1]])
+  )
+
+  emm_link <- emmeans::emmeans(fit, ~ outcome_type, type = "link")
+  emm_prob <- emmeans::emmeans(fit, ~ outcome_type, type = "response")
+
+  # Planned contrasts (no multiplicity correction; planned)
+  contr <- emmeans::contrast(
+    emm_link,
+    method = list(
+      "Non-Salient Win vs Loss" = c(-1, 1, 0),
+      "Salient Win vs Loss" = c(-1, 0, 1),
+      "Salient Win vs Non-Salient Win" = c(0, -1, 1)
+    ),
+    adjust = "none"
+  )
+
+  contr_sum <- summary(contr, infer = c(TRUE, TRUE))
+  contr_df <- as.data.frame(contr_sum)
+  lcl_col <- if ("lower.CL" %in% names(contr_df)) "lower.CL" else if ("asymp.LCL" %in% names(contr_df)) "asymp.LCL" else NA_character_
+  ucl_col <- if ("upper.CL" %in% names(contr_df)) "upper.CL" else if ("asymp.UCL" %in% names(contr_df)) "asymp.UCL" else NA_character_
+
+  contrasts <- contr_df %>%
+    dplyr::transmute(
+      contrast = .data$contrast,
+      estimate_logit = .data$estimate,
+      std.error = .data$SE,
+      z.ratio = .data$z.ratio,
+      p.value = .data$p.value,
+      conf.low_logit = if (!is.na(lcl_col)) .data[[lcl_col]] else NA_real_,
+      conf.high_logit = if (!is.na(ucl_col)) .data[[ucl_col]] else NA_real_,
+      odds_ratio = exp(.data$estimate),
+      conf.low_or = if (!is.na(lcl_col)) exp(.data[[lcl_col]]) else NA_real_,
+      conf.high_or = if (!is.na(ucl_col)) exp(.data[[ucl_col]]) else NA_real_
+    )
+
+  emmprob_df <- as.data.frame(summary(emm_prob, infer = c(TRUE, TRUE)))
+  lcl_col <- if ("lower.CL" %in% names(emmprob_df)) "lower.CL" else if ("asymp.LCL" %in% names(emmprob_df)) "asymp.LCL" else NA_character_
+  ucl_col <- if ("upper.CL" %in% names(emmprob_df)) "upper.CL" else if ("asymp.UCL" %in% names(emmprob_df)) "asymp.UCL" else NA_character_
+
+  emmeans_prob_tbl <- emmprob_df %>%
+    dplyr::transmute(
+      outcome_type = as.character(.data$outcome_type),
+      prob = .data$prob,
+      conf.low = if (!is.na(lcl_col)) .data[[lcl_col]] else NA_real_,
+      conf.high = if (!is.na(ucl_col)) .data[[ucl_col]] else NA_real_
+    )
+
+  notes <- c(
+    "outcome_type reference category was `Loss`",
+    "direct salience test is `Salient Win vs Non-Salient Win`",
+    "contrast estimates are computed with `emmeans`",
+    "logit-scale contrasts are exponentiated for odds-ratio interpretation"
+  )
+
+  list(
+    specification = specification,
+    fixed_logit = fixed_logit,
+    fixed_or = fixed_or,
+    random_effects = random_effects,
+    contrasts = contrasts,
+    emmeans_prob = emmeans_prob_tbl,
+    notes = notes
+  )
+}
+
+
+glmm_prepare_optimality_trial_level <- function(task_data,
+                                                enforce_consecutive_trials = TRUE,
+                                                exclude_ties = TRUE) {
+  #####
+  # Prepare trial-level data for GLMM of choice optimality by previous outcome
+  #
+  # Constructs a trial-level dataset for modeling whether the current choice is
+  # optimal (i.e., choosing the higher-probability arm), conditional on the
+  # previous trial's outcome type.
+  #
+  # Inclusion rules
+  # ----
+  # - Current trial t must have non-missing choice and reward probabilities.
+  # - Previous trial t-1 must be observed (choice, reward, condition) to define prev_outcome.
+  # - If exclude_ties: exclude trials where reward_prob_1 == reward_prob_2.
+  # - If enforce_consecutive_trials: require trial[t] == trial[t-1] + 1.
+  #
+  # Parameters
+  # ----
+  # task_data : tibble
+  #     Cleaned task data containing: participant_id, trial, choice, reward, condition, reward_prob_1, reward_prob_2
+  # enforce_consecutive_trials : logical
+  #     If TRUE (default), require consecutive trial numbering for (t-1, t) pairs
+  # exclude_ties : logical
+  #     If TRUE (default), exclude trials with equal reward probabilities
+  #
+  # Returns
+  # ----
+  # tibble
+  #     Trial-level GLMM data with columns:
+  #     participant_id, trial, prev_outcome, optimal_choice, trial_scaled
+  #####
+  stopifnot("task_data must have participant_id" = "participant_id" %in% names(task_data))
+  stopifnot("task_data must have trial" = "trial" %in% names(task_data))
+  stopifnot("task_data must have choice" = "choice" %in% names(task_data))
+  stopifnot("task_data must have reward" = "reward" %in% names(task_data))
+  stopifnot("task_data must have condition" = "condition" %in% names(task_data))
+  stopifnot("task_data must have reward_prob_1" = "reward_prob_1" %in% names(task_data))
+  stopifnot("task_data must have reward_prob_2" = "reward_prob_2" %in% names(task_data))
+  stopifnot("enforce_consecutive_trials must be logical" = is.logical(enforce_consecutive_trials))
+  stopifnot("exclude_ties must be logical" = is.logical(exclude_ties))
+
+  df <- task_data %>%
+    dplyr::arrange(participant_id, trial) %>%
+    dplyr::group_by(participant_id) %>%
+    dplyr::mutate(
+      prev_trial = dplyr::lag(trial, 1),
+      prev_reward = dplyr::lag(reward, 1),
+      prev_condition = dplyr::lag(condition, 1),
+      prev_choice = dplyr::lag(choice, 1)
+    ) %>%
+    dplyr::ungroup() %>%
+    dplyr::filter(!is.na(choice)) %>%
+    dplyr::filter(!is.na(reward_prob_1) & !is.na(reward_prob_2)) %>%
+    dplyr::filter(!is.na(prev_choice) & !is.na(prev_reward) & !is.na(prev_condition)) %>%
+    dplyr::mutate(
+      prev_outcome = dplyr::case_when(
+        prev_reward == 0 ~ "Loss",
+        prev_reward == 1 & prev_condition == 0 ~ "Non-Salient Win",
+        prev_reward == 1 & prev_condition == 1 ~ "Salient Win",
+        TRUE ~ NA_character_
+      )
+    ) %>%
+    dplyr::filter(!is.na(prev_outcome))
+
+  if (isTRUE(enforce_consecutive_trials)) {
+    df <- df %>%
+      dplyr::filter(!is.na(prev_trial) & trial == prev_trial + 1L)
+  }
+
+  if (isTRUE(exclude_ties)) {
+    df <- df %>% dplyr::filter(reward_prob_1 != reward_prob_2)
+  }
+
+  df %>%
+    dplyr::mutate(
+      participant_id = as.character(participant_id),
+      prev_outcome = factor(prev_outcome, levels = c("Loss", "Non-Salient Win", "Salient Win")),
+      choice = as.integer(choice),
+      optimal_choice = as.integer(ifelse(reward_prob_1 > reward_prob_2, 0L, 1L) == choice),
+      trial_scaled = as.numeric(scale(trial))
+    ) %>%
+    dplyr::select(participant_id, trial, prev_outcome, optimal_choice, trial_scaled)
+}
+
+
+glmm_fit_optimal_choice_by_prev_outcome <- function(task_data,
+                                                    enforce_consecutive_trials = TRUE,
+                                                    exclude_ties = TRUE,
+                                                    optimizer = "bobyqa") {
+  #####
+  # Fit GLMM predicting choice optimality from previous outcome type
+  #
+  # Fits a logistic mixed-effects model:
+  # optimal_choice ~ prev_outcome + trial_scaled + (1 | participant_id)
+  #
+  # Parameters
+  # ----
+  # task_data : tibble
+  #     Cleaned task data
+  # enforce_consecutive_trials : logical
+  #     Passed to glmm_prepare_optimality_trial_level() (default: TRUE)
+  # exclude_ties : logical
+  #     Passed to glmm_prepare_optimality_trial_level() (default: TRUE)
+  # optimizer : character
+  #     Optimizer name for lme4::glmerControl() (default: "bobyqa")
+  #
+  # Returns
+  # ----
+  # list
+  #     Named list with:
+  #     - data: trial-level data used for fitting
+  #     - fit: fitted glmer model
+  #     - tidy_or: broom.mixed::tidy table (odds ratios, 95% CI)
+  #####
+  if (!requireNamespace("lme4", quietly = TRUE)) {
+    stop("Package `lme4` is required for GLMMs. Please install it (e.g., via renv).")
+  }
+  if (!requireNamespace("broom.mixed", quietly = TRUE)) {
+    stop("Package `broom.mixed` is required for tidying GLMMs. Please install it (e.g., via renv).")
+  }
+
+  df <- glmm_prepare_optimality_trial_level(
+    task_data = task_data,
+    enforce_consecutive_trials = enforce_consecutive_trials,
+    exclude_ties = exclude_ties
+  )
+
+  fit <- lme4::glmer(
+    optimal_choice ~ prev_outcome + trial_scaled + (1 | participant_id),
+    data = df,
+    family = stats::binomial(),
+    control = lme4::glmerControl(optimizer = optimizer)
+  )
+
+  tidy_or <- broom.mixed::tidy(fit, conf.int = TRUE, exponentiate = TRUE)
+
+  list(data = df, fit = fit, tidy_or = tidy_or)
+}
+
+
+glmm_report_optimal_choice_by_prev_outcome <- function(task_data,
+                                                       enforce_consecutive_trials = TRUE,
+                                                       exclude_ties = TRUE,
+                                                       optimizer = "bobyqa") {
+  #####
+  # Create a structured, machine-readable report for the "optimal choice" GLMM
+  #
+  # Fits the optimality GLMM and returns a named list containing:
+  # - model specification/metadata
+  # - fixed effects (log-odds + OR)
+  # - random effects summary (SDs)
+  # - planned contrasts via emmeans (including Salient vs Non-Salient)
+  # - estimated marginal means (predicted probabilities)
+  #
+  # Parameters
+  # ----
+  # task_data : tibble
+  #     Cleaned task data
+  # enforce_consecutive_trials : logical
+  #     Passed to glmm_fit_optimal_choice_by_prev_outcome() (default: TRUE)
+  # exclude_ties : logical
+  #     Passed to glmm_fit_optimal_choice_by_prev_outcome() (default: TRUE)
+  # optimizer : character
+  #     Optimizer name for lme4::glmerControl() (default: "bobyqa")
+  #
+  # Returns
+  # ----
+  # list
+  #     Named list with elements:
+  #     specification, fixed_logit, fixed_or, random_effects, contrasts, emmeans_prob, notes
+  #####
+  if (!requireNamespace("lme4", quietly = TRUE)) {
+    stop("Package `lme4` is required for GLMMs. Please install it (e.g., via renv).")
+  }
+  if (!requireNamespace("broom.mixed", quietly = TRUE)) {
+    stop("Package `broom.mixed` is required for tidying GLMMs. Please install it (e.g., via renv).")
+  }
+  if (!requireNamespace("emmeans", quietly = TRUE)) {
+    stop("Package `emmeans` is required for planned contrasts. Please install it (e.g., via renv).")
+  }
+
+  fitted <- glmm_fit_optimal_choice_by_prev_outcome(
+    task_data = task_data,
+    enforce_consecutive_trials = enforce_consecutive_trials,
+    exclude_ties = exclude_ties,
+    optimizer = optimizer
+  )
+
+  df <- fitted$data
+  fit <- fitted$fit
+
+  conv_msgs <- NULL
+  conv_warnings <- NULL
+  opt <- tryCatch(fit@optinfo, error = function(e) NULL)
+  if (!is.null(opt)) {
+    conv_msgs <- opt$conv$lme4$messages
+    conv_warnings <- opt$conv$lme4$warnings
+  }
+  conv_all <- c(conv_msgs, conv_warnings)
+  conv_all <- conv_all[!is.na(conv_all)]
+  conv_all <- unique(as.character(conv_all))
+  conv_str <- if (length(conv_all) == 0) "" else paste(conv_all, collapse = " | ")
+
+  specification <- list(
+    formula = "optimal_choice ~ prev_outcome + trial_scaled + (1 | participant_id)",
+    family = "binomial(link = \"logit\")",
+    reference_level_prev_outcome = "Loss",
+    n_observations = nrow(df),
+    n_participants = dplyr::n_distinct(df$participant_id),
+    optimizer = optimizer,
+    convergence_warnings = conv_str,
+    singular_fit = lme4::isSingular(fit, tol = 1e-4)
+  )
+
+  fixed_logit <- broom.mixed::tidy(fit, effects = "fixed", conf.int = TRUE, exponentiate = FALSE) %>%
+    dplyr::transmute(
+      term = .data$term,
+      estimate_logit = .data$estimate,
+      std.error = .data$std.error,
+      statistic = .data$statistic,
+      p.value = .data$p.value,
+      conf.low_logit = .data$conf.low,
+      conf.high_logit = .data$conf.high
+    )
+
+  fixed_or <- broom.mixed::tidy(fit, effects = "fixed", conf.int = TRUE, exponentiate = TRUE) %>%
+    dplyr::transmute(
+      term = .data$term,
+      odds_ratio = .data$estimate,
+      conf.low_or = .data$conf.low,
+      conf.high_or = .data$conf.high
+    )
+
+  vc <- lme4::VarCorr(fit)
+  re_sd <- attr(vc[["participant_id"]], "stddev")
+  random_effects <- tibble::tibble(
+    group = "participant_id",
+    term = "sd__(Intercept)",
+    estimate = unname(re_sd[[1]])
+  )
+
+  emm_link <- emmeans::emmeans(fit, ~ prev_outcome, type = "link")
+  emm_prob <- emmeans::emmeans(fit, ~ prev_outcome, type = "response")
+
+  contr <- emmeans::contrast(
+    emm_link,
+    method = list(
+      "Non-Salient Win vs Loss" = c(-1, 1, 0),
+      "Salient Win vs Loss" = c(-1, 0, 1),
+      "Salient Win vs Non-Salient Win" = c(0, -1, 1)
+    ),
+    adjust = "none"
+  )
+
+  contr_sum <- summary(contr, infer = c(TRUE, TRUE))
+  contr_df <- as.data.frame(contr_sum)
+  lcl_col <- if ("lower.CL" %in% names(contr_df)) "lower.CL" else if ("asymp.LCL" %in% names(contr_df)) "asymp.LCL" else NA_character_
+  ucl_col <- if ("upper.CL" %in% names(contr_df)) "upper.CL" else if ("asymp.UCL" %in% names(contr_df)) "asymp.UCL" else NA_character_
+
+  contrasts <- contr_df %>%
+    dplyr::transmute(
+      contrast = .data$contrast,
+      estimate_logit = .data$estimate,
+      std.error = .data$SE,
+      z.ratio = .data$z.ratio,
+      p.value = .data$p.value,
+      conf.low_logit = if (!is.na(lcl_col)) .data[[lcl_col]] else NA_real_,
+      conf.high_logit = if (!is.na(ucl_col)) .data[[ucl_col]] else NA_real_,
+      odds_ratio = exp(.data$estimate),
+      conf.low_or = if (!is.na(lcl_col)) exp(.data[[lcl_col]]) else NA_real_,
+      conf.high_or = if (!is.na(ucl_col)) exp(.data[[ucl_col]]) else NA_real_
+    )
+
+  emmprob_df <- as.data.frame(summary(emm_prob, infer = c(TRUE, TRUE)))
+  lcl_col <- if ("lower.CL" %in% names(emmprob_df)) "lower.CL" else if ("asymp.LCL" %in% names(emmprob_df)) "asymp.LCL" else NA_character_
+  ucl_col <- if ("upper.CL" %in% names(emmprob_df)) "upper.CL" else if ("asymp.UCL" %in% names(emmprob_df)) "asymp.UCL" else NA_character_
+
+  emmeans_prob_tbl <- emmprob_df %>%
+    dplyr::transmute(
+      outcome_type = as.character(.data$prev_outcome),
+      prob = .data$prob,
+      conf.low = if (!is.na(lcl_col)) .data[[lcl_col]] else NA_real_,
+      conf.high = if (!is.na(ucl_col)) .data[[ucl_col]] else NA_real_
+    )
+
+  notes <- c(
+    "prev_outcome reference category was `Loss`",
+    "direct salience test is `Salient Win vs Non-Salient Win`",
+    "contrast estimates are computed with `emmeans`",
+    "logit-scale contrasts are exponentiated for odds-ratio interpretation"
+  )
+
+  list(
+    specification = specification,
+    fixed_logit = fixed_logit,
+    fixed_or = fixed_or,
+    random_effects = random_effects,
+    contrasts = contrasts,
+    emmeans_prob = emmeans_prob_tbl,
+    notes = notes
+  )
+}
+
 compute_prp_median_by_outcome_subject <- function(task_data,
                                                   enforce_consecutive_trials = TRUE,
                                                   require_valid_choice_conditioning = TRUE,

@@ -3,8 +3,8 @@
 # ============================================
 
 # ========== Configuration ==========
-RUN_EDA <- FALSE      # Run exploratory data analysis and generate report
-RUN_MODELS <- TRUE  # Run reinforcement learning model fitting
+RUN_EDA <- TRUE      # Run exploratory data analysis and generate report
+RUN_MODELS <- FALSE  # Run reinforcement learning model fitting
 # ===================================
 
 # ========== Modeling Policy ==========
@@ -24,8 +24,7 @@ library(here)         # path management (optional but recommended)
 
 # Configure rstan for optimal performance
 # NOTE (macOS): fork-based parallelism can crash when ObjC-backed libs are loaded.
-# For robustness, default to single-core sampling on macOS. If you need speed,
-# consider switching to cmdstanr (separate processes) instead of forking.
+# For robustness, default to single-core sampling on macOS.
 sysname <- tryCatch(Sys.info()[["sysname"]], error = function(e) NA_character_)
 if (!is.na(sysname) && sysname == "Darwin") {
   options(mc.cores = 1)
@@ -111,6 +110,31 @@ if (RUN_EDA) {
   reward_rate_subj <- compute_reward_rate_subject(data_proc$task)
   win_stay_overall_subj <- compute_win_stay_overall_subject(wsls_by_outcome_subj)
 
+  # Model-agnostic GLMMs (complement to preregistered t-tests)
+  message("Fitting model-agnostic GLMMs (stay, optimality)...")
+  glmm_stay <- glmm_fit_stay_by_prev_outcome(
+    task_data = data_proc$task,
+    enforce_consecutive_trials = TRUE,
+    exclude_fast_rt = TRUE,
+    fast_rt_threshold = 0.15
+  )
+  glmm_optimality <- glmm_fit_optimal_choice_by_prev_outcome(
+    task_data = data_proc$task,
+    enforce_consecutive_trials = TRUE,
+    exclude_ties = TRUE
+  )
+  glmm_stay_report <- glmm_report_stay_by_prev_outcome(
+    task_data = data_proc$task,
+    enforce_consecutive_trials = TRUE,
+    exclude_fast_rt = TRUE,
+    fast_rt_threshold = 0.15
+  )
+  glmm_optimality_report <- glmm_report_optimal_choice_by_prev_outcome(
+    task_data = data_proc$task,
+    enforce_consecutive_trials = TRUE,
+    exclude_ties = TRUE
+  )
+
   # Questionnaire (EDA only)
   message("Computing questionnaire score summaries (EDA)...")
   questionnaire_scores_subj <- compute_questionnaire_subject_scores(
@@ -164,6 +188,10 @@ if (RUN_EDA) {
     prp_test = prp_test,
     reward_rate_subj = reward_rate_subj,
     win_stay_overall_subj = win_stay_overall_subj,
+    glmm_stay_or = glmm_stay$tidy_or,
+    glmm_optimality_or = glmm_optimality$tidy_or,
+    glmm_stay_report = glmm_stay_report,
+    glmm_optimality_report = glmm_optimality_report,
     questionnaire_scores_subj = questionnaire_scores_subj,
     questionnaire_scores_long = questionnaire_scores_long,
     questionnaire_score_summaries = questionnaire_score_summaries,

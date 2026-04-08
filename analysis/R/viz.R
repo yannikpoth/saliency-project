@@ -463,8 +463,136 @@ viz_posterior_densities_grid <- function(data_list, output_dir) {
   # 4. Create Plot
   # --------------
 
-  p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = Value)) +
-    ggplot2::geom_density(fill = "lightblue", alpha = 0.7, color = "navy") +
+  # Split-fill density for alpha_shift_mu: area <= 0 (white) vs > 0 (lightblue),
+  # plus a boundary line at x = 0 up to the density curve and an annotation of P(Value > 0).
+  plot_data_other <- plot_data %>% dplyr::filter(.data$Parameter != "alpha_shift_mu")
+  plot_data_alpha_shift <- plot_data %>% dplyr::filter(.data$Parameter == "alpha_shift_mu")
+
+  if (nrow(plot_data_alpha_shift) == 0) {
+    plot_data_alpha_shift <- data.frame(
+      Model_F = factor(character()),
+      Parameter_F = factor(character()),
+      Value = numeric()
+    )
+  }
+
+  alpha_shift_pct <- plot_data_alpha_shift %>%
+    dplyr::group_by(.data$Model_F, .data$Parameter_F) %>%
+    dplyr::summarise(
+      p_gt0 = mean(.data$Value > 0, na.rm = TRUE) * 100,
+      label = sprintf("%.1f%%", .data$p_gt0),
+      .groups = "drop"
+    )
+
+  alpha_shift_density <- dplyr::bind_rows(lapply(
+    split(plot_data_alpha_shift, list(plot_data_alpha_shift$Model_F, plot_data_alpha_shift$Parameter_F), drop = TRUE),
+    function(df_grp) {
+      if (!is.data.frame(df_grp) || nrow(df_grp) < 2) return(NULL)
+      d <- stats::density(df_grp$Value, n = 512, na.rm = TRUE)
+      data.frame(
+        Model_F = df_grp$Model_F[[1]],
+        Parameter_F = df_grp$Parameter_F[[1]],
+        x = d$x,
+        y = d$y,
+        Region = ifelse(d$x > 0, "pos", "neg"),
+        stringsAsFactors = FALSE
+      )
+    }
+  ))
+
+  alpha_shift_boundary <- dplyr::bind_rows(lapply(
+    split(plot_data_alpha_shift, list(plot_data_alpha_shift$Model_F, plot_data_alpha_shift$Parameter_F), drop = TRUE),
+    function(df_grp) {
+      if (!is.data.frame(df_grp) || nrow(df_grp) < 2) return(NULL)
+      d <- stats::density(df_grp$Value, n = 512, na.rm = TRUE)
+      y0 <- stats::approx(d$x, d$y, xout = 0, rule = 2)$y
+      data.frame(
+        Model_F = df_grp$Model_F[[1]],
+        Parameter_F = df_grp$Parameter_F[[1]],
+        x = 0,
+        xend = 0,
+        y = 0,
+        yend = y0,
+        stringsAsFactors = FALSE
+      )
+    }
+  ))
+
+  if (is.null(alpha_shift_density) || !is.data.frame(alpha_shift_density) || nrow(alpha_shift_density) == 0) {
+    alpha_shift_density <- data.frame(
+      Model_F = factor(character()),
+      Parameter_F = factor(character()),
+      x = numeric(),
+      y = numeric(),
+      Region = character(),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  if (is.null(alpha_shift_boundary) || !is.data.frame(alpha_shift_boundary) || nrow(alpha_shift_boundary) == 0) {
+    alpha_shift_boundary <- data.frame(
+      Model_F = factor(character()),
+      Parameter_F = factor(character()),
+      x = numeric(),
+      xend = numeric(),
+      y = numeric(),
+      yend = numeric(),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  # Label position: anchor at x = 0 and y = 0.05 * max(density)
+  alpha_shift_label_pos <- alpha_shift_density %>%
+    dplyr::group_by(.data$Model_F, .data$Parameter_F) %>%
+    dplyr::summarise(y_pos = 0.05 * max(.data$y, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::mutate(x_pos = 0)
+
+  alpha_shift_pct <- alpha_shift_pct %>%
+    dplyr::left_join(alpha_shift_label_pos, by = c("Model_F", "Parameter_F"))
+
+  p <- ggplot2::ggplot() +
+    ggplot2::geom_density(
+      data = plot_data_other,
+      ggplot2::aes(x = .data$Value),
+      fill = "lightblue",
+      alpha = 0.7,
+      color = "navy"
+    ) +
+    ggplot2::geom_area(
+      data = alpha_shift_density %>% dplyr::filter(.data$Region == "neg"),
+      ggplot2::aes(x = .data$x, y = .data$y),
+      fill = "white",
+      alpha = 1,
+      color = NA
+    ) +
+    ggplot2::geom_area(
+      data = alpha_shift_density %>% dplyr::filter(.data$Region == "pos"),
+      ggplot2::aes(x = .data$x, y = .data$y),
+      fill = "lightblue",
+      alpha = 0.7,
+      color = NA
+    ) +
+    ggplot2::geom_line(
+      data = alpha_shift_density,
+      ggplot2::aes(x = .data$x, y = .data$y),
+      color = "navy",
+      linewidth = 0.4
+    ) +
+    ggplot2::geom_segment(
+      data = alpha_shift_boundary,
+      ggplot2::aes(x = .data$x, xend = .data$xend, y = .data$y, yend = .data$yend),
+      color = "navy",
+      linewidth = 0.4
+    ) +
+    ggplot2::geom_text(
+      data = alpha_shift_pct,
+      ggplot2::aes(x = .data$x_pos, y = .data$y_pos, label = .data$label),
+      color = "black",
+      size = 3.2,
+      hjust = 0,
+      vjust = 0,
+      fontface = "bold"
+    ) +
     ggplot2::geom_vline(data = medians, ggplot2::aes(xintercept = median_val),
                         color = "red", linetype = "dashed", linewidth = 0.5) +
 

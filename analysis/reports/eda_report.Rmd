@@ -33,6 +33,10 @@ params:
   prp_test: NA
   reward_rate_subj: NA
   win_stay_overall_subj: NA
+  glmm_stay_or: NA
+  glmm_optimality_or: NA
+  glmm_stay_report: NA
+  glmm_optimality_report: NA
   questionnaire_scores_subj: NA
   questionnaire_scores_long: NA
   questionnaire_score_summaries: NA

@@ -31,6 +31,10 @@ params:
   prp_test: NA
   reward_rate_subj: NA
   win_stay_overall_subj: NA
+  glmm_stay_or: NA
+  glmm_optimality_or: NA
+  glmm_stay_report: NA
+  glmm_optimality_report: NA
   questionnaire_scores_subj: NA
   questionnaire_scores_long: NA
   questionnaire_score_summaries: NA
@@ -318,9 +322,135 @@ if (!is.null(df)) df <- df %>% dplyr::mutate(participant_id = as.character(parti
 .kbl(df, digits = 4)
 ```
 
-## 7) Questionnaire scores
+## 7) Model-agnostic GLMMs
 
-### 7.1 Questionnaire scores (participant-level)
+### 7.1 GLMM: Stay probability by previous outcome
+
+#### 7.1.1 Model specification
+
+```{r}
+spec <- params$glmm_stay_report$specification
+if (is.null(spec) || length(spec) == 0) {
+  knitr::asis_output("_No data._\n")
+} else {
+  cat(paste0("- formula: `", spec$formula, "`\n"))
+  cat(paste0("- family: `", spec$family, "`\n"))
+  cat(paste0("- reference level for outcome_type: `", spec$reference_level_outcome_type, "`\n"))
+  cat(paste0("- n_observations: ", spec$n_observations, "\n"))
+  cat(paste0("- n_participants: ", spec$n_participants, "\n"))
+  cat(paste0("- optimizer / fitting method: `", spec$optimizer, "`\n"))
+  cat(paste0("- convergence_warnings: `", ifelse(nchar(spec$convergence_warnings) == 0, "None", spec$convergence_warnings), "`\n"))
+  cat(paste0("- singular_fit: `", spec$singular_fit, "`\n"))
+}
+```
+
+#### 7.1.2 Fixed effects (log-odds scale)
+
+```{r}
+.kbl(params$glmm_stay_report$fixed_logit, digits = 6)
+```
+
+#### 7.1.3 Fixed effects (odds-ratio scale)
+
+```{r}
+.kbl(params$glmm_stay_report$fixed_or, digits = 6)
+```
+
+#### 7.1.4 Random effects
+
+```{r}
+.kbl(params$glmm_stay_report$random_effects, digits = 6)
+```
+
+#### 7.1.5 Planned contrasts from estimated marginal means
+
+```{r}
+.kbl(params$glmm_stay_report$contrasts, digits = 6)
+```
+
+#### 7.1.6 Estimated marginal means / predicted probabilities
+
+```{r}
+.kbl(params$glmm_stay_report$emmeans_prob, digits = 6)
+```
+
+#### 7.1.7 Notes
+
+```{r}
+notes <- params$glmm_stay_report$notes
+if (is.null(notes) || length(notes) == 0) {
+  knitr::asis_output("_No notes._\n")
+} else {
+  cat(paste0("- ", notes, collapse = "\n"))
+  cat("\n")
+}
+```
+
+### 7.2 GLMM: Choice optimality by previous outcome
+
+#### 7.2.1 Model specification
+
+```{r}
+spec <- params$glmm_optimality_report$specification
+if (is.null(spec) || length(spec) == 0) {
+  knitr::asis_output("_No data._\n")
+} else {
+  cat(paste0("- formula: `", spec$formula, "`\n"))
+  cat(paste0("- family: `", spec$family, "`\n"))
+  cat(paste0("- reference level for prev_outcome: `", spec$reference_level_prev_outcome, "`\n"))
+  cat(paste0("- n_observations: ", spec$n_observations, "\n"))
+  cat(paste0("- n_participants: ", spec$n_participants, "\n"))
+  cat(paste0("- optimizer / fitting method: `", spec$optimizer, "`\n"))
+  cat(paste0("- convergence_warnings: `", ifelse(nchar(spec$convergence_warnings) == 0, "None", spec$convergence_warnings), "`\n"))
+  cat(paste0("- singular_fit: `", spec$singular_fit, "`\n"))
+}
+```
+
+#### 7.2.2 Fixed effects (log-odds scale)
+
+```{r}
+.kbl(params$glmm_optimality_report$fixed_logit, digits = 6)
+```
+
+#### 7.2.3 Fixed effects (odds-ratio scale)
+
+```{r}
+.kbl(params$glmm_optimality_report$fixed_or, digits = 6)
+```
+
+#### 7.2.4 Random effects
+
+```{r}
+.kbl(params$glmm_optimality_report$random_effects, digits = 6)
+```
+
+#### 7.2.5 Planned contrasts from estimated marginal means
+
+```{r}
+.kbl(params$glmm_optimality_report$contrasts, digits = 6)
+```
+
+#### 7.2.6 Estimated marginal means / predicted probabilities
+
+```{r}
+.kbl(params$glmm_optimality_report$emmeans_prob, digits = 6)
+```
+
+#### 7.2.7 Notes
+
+```{r}
+notes <- params$glmm_optimality_report$notes
+if (is.null(notes) || length(notes) == 0) {
+  knitr::asis_output("_No notes._\n")
+} else {
+  cat(paste0("- ", notes, collapse = "\n"))
+  cat("\n")
+}
+```
+
+## 8) Questionnaire scores
+
+### 8.1 Questionnaire scores (participant-level)
 
 ```{r}
 df <- .as_tbl(params$questionnaire_scores_subj)
@@ -328,13 +458,13 @@ if (!is.null(df)) df <- df %>% dplyr::mutate(participant_id = as.character(parti
 .kbl(df, digits = 4)
 ```
 
-### 7.2 Questionnaire score summaries
+### 8.2 Questionnaire score summaries
 
 ```{r}
 .kbl(params$questionnaire_score_summaries, digits = 4)
 ```
 
-### 7.3 BIS vs SSS relationship
+### 8.3 BIS vs SSS relationship
 
 ```{r}
 .kbl(params$bis_ss_corr, digits = 6)
