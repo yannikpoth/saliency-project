@@ -28,7 +28,12 @@ params:
   prp_by_outcome_subj: NA
   wsls_test: NA
   wsls_loss_vs_wins_test: NA
-  prp_test: NA
+  prp_test_omnibus: NA
+  prp_test_omnibus_assumptions: NA
+  prp_test_rm_anova: NA
+  prp_test_sphericity: NA
+  prp_test_pairwise: NA
+  prp_test_pairwise_note: NA
   reward_rate_subj: NA
   win_stay_overall_subj: NA
   glmm_stay_or: NA
@@ -287,6 +292,42 @@ wide <- .pivot_wide_safe(
 .kbl(params$wsls_loss_vs_wins_test, digits = 6)
 ```
 
+### 6.2a WSLS assumption checks
+
+```{r}
+df <- .as_tbl(params$wsls_test)
+if (!is.null(df) && nrow(df) > 0) {
+  df <- df %>%
+    dplyr::transmute(
+      comparison = paste0(a, " - ", b),
+      shapiro_n,
+      shapiro_w,
+      shapiro_p_value,
+      normality_assumption_met,
+      recommended_test,
+      assumption_note
+    )
+}
+.kbl(df, digits = 6)
+```
+
+```{r}
+df <- .as_tbl(params$wsls_loss_vs_wins_test)
+if (!is.null(df) && nrow(df) > 0) {
+  df <- df %>%
+    dplyr::transmute(
+      comparison = "Loss - All Wins",
+      shapiro_n,
+      shapiro_w,
+      shapiro_p_value,
+      normality_assumption_met,
+      recommended_test,
+      assumption_note
+    )
+}
+.kbl(df, digits = 6)
+```
+
 ### 6.3 PRP median by previous outcome (participant-level)
 
 ```{r}
@@ -300,10 +341,43 @@ wide <- .pivot_wide_safe(
 .kbl(wide, digits = 4)
 ```
 
-### 6.4 PRP test
+### 6.4 PRP omnibus test
 
 ```{r}
-.kbl(params$prp_test, digits = 6)
+.kbl(params$prp_test_omnibus, digits = 6)
+```
+
+### 6.4a PRP omnibus assumption checks
+
+```{r}
+df <- .as_tbl(params$prp_test_omnibus_assumptions)
+if (!is.null(df) && nrow(df) > 0) {
+  df <- df %>%
+    dplyr::transmute(comparison, shapiro_n, shapiro_w, shapiro_p_value, normality_assumption_met, assumption_note)
+}
+.kbl(df, digits = 6)
+```
+
+### 6.4b PRP repeated-measures ANOVA
+
+```{r}
+.kbl(params$prp_test_rm_anova, digits = 6)
+```
+
+### 6.4c PRP sphericity diagnostics
+
+```{r}
+.kbl(params$prp_test_sphericity, digits = 6)
+```
+
+### 6.4d PRP pairwise follow-up tests
+
+```{r}
+df <- .as_tbl(params$prp_test_pairwise)
+if (is.null(df) || nrow(df) == 0) {
+  df <- tibble::tibble(note = params$prp_test_pairwise_note)
+}
+.kbl(df, digits = 6)
 ```
 
 ### 6.5 Reward rate (participant-level)

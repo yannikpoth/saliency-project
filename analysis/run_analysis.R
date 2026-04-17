@@ -3,8 +3,9 @@
 # ============================================
 
 # ========== Configuration ==========
-RUN_EDA <- TRUE      # Run exploratory data analysis and generate report
-RUN_MODELS <- FALSE  # Run reinforcement learning model fitting
+RUN_EDA <- FALSE      # Run exploratory data analysis and generate report
+RUN_MODELS <- TRUE   # Run reinforcement learning model analysis
+FORCE_REFIT <- FALSE # Force to refit all models from scratch are use existing fits
 # ===================================
 
 # ========== Modeling Policy ==========
@@ -41,7 +42,9 @@ source("analysis/R/rl_models.R")
 source("analysis/R/behavior_metrics.R")
 source("analysis/R/viz.R")
 source("analysis/R/diagnostics.R")
+source("analysis/R/model_llm_reports.R")
 source("analysis/reports/render_eda_llm_results.R")
+source("analysis/reports/render_model_llm_results.R")
 
 # Initialize Input/Output
 io_init()
@@ -106,7 +109,7 @@ if (RUN_EDA) {
   )
   wsls_test <- test_wsls_salient_vs_nonsalient(wsls_by_outcome_subj)
   wsls_loss_vs_wins_test <- test_wsls_loss_vs_wins(wsls_by_outcome_subj)
-  prp_test <- test_prp_salient_vs_nonsalient(prp_by_outcome_subj)
+  prp_tests <- test_prp_by_outcome(prp_by_outcome_subj)
   reward_rate_subj <- compute_reward_rate_subject(data_proc$task)
   win_stay_overall_subj <- compute_win_stay_overall_subject(wsls_by_outcome_subj)
 
@@ -185,7 +188,12 @@ if (RUN_EDA) {
     prp_by_outcome_subj = prp_by_outcome_subj,
     wsls_test = wsls_test,
     wsls_loss_vs_wins_test = wsls_loss_vs_wins_test,
-    prp_test = prp_test,
+    prp_test_omnibus = prp_tests$omnibus,
+    prp_test_omnibus_assumptions = prp_tests$omnibus_assumptions,
+    prp_test_rm_anova = prp_tests$rm_anova,
+    prp_test_sphericity = prp_tests$sphericity,
+    prp_test_pairwise = prp_tests$pairwise,
+    prp_test_pairwise_note = prp_tests$pairwise_note,
     reward_rate_subj = reward_rate_subj,
     win_stay_overall_subj = win_stay_overall_subj,
     glmm_stay_or = glmm_stay$tidy_or,
@@ -292,7 +300,7 @@ if (RUN_MODELS) {
       model_name,
       stan_data = stan_data,
       fit_dir = "analysis/outputs/fits",
-      force_refit = FALSE,
+      force_refit = FORCE_REFIT,
       timestamp = TIMESTAMP,
       chains = STAN_CHAINS,
       iter = STAN_ITER,
@@ -421,6 +429,40 @@ if (RUN_MODELS) {
     file.path("analysis/outputs/tables", "winning_model_params.csv")
   )
   message(sprintf("Saved parameter estimates to: analysis/outputs/tables/winning_model_params.csv"))
+
+  # Generate LLM-ready Markdown reports for the winning model
+  model_report_date_tag <- format(Sys.time(), "%Y%m%d")
+  winning_fit_path <- fit_paths[[comparison$winning_model]]
+
+  model_llm_params <- model_reports_build_main_params(
+    winning_fit = winning_fit,
+    winning_model_name = comparison$winning_model,
+    comparison = comparison,
+    all_diagnostics = all_diagnostics,
+    timestamp = TIMESTAMP,
+    fit_path = winning_fit_path,
+    stan_data = stan_data
+  )
+  model_llm_path <- render_main_model_llm_results(
+    params = model_llm_params,
+    output_dir = "analysis/outputs/reports",
+    date_tag = model_report_date_tag
+  )
+  message(sprintf("LLM-ready model results saved to: %s", model_llm_path))
+
+  ppc_llm_params <- model_reports_build_ppc_params(
+    winning_fit = winning_fit,
+    winning_model_name = comparison$winning_model,
+    timestamp = TIMESTAMP,
+    fit_path = winning_fit_path,
+    stan_data = stan_data
+  )
+  ppc_llm_path <- render_ppc_llm_results(
+    params = ppc_llm_params,
+    output_dir = "analysis/outputs/reports",
+    date_tag = model_report_date_tag
+  )
+  message(sprintf("LLM-ready PPC results saved to: %s", ppc_llm_path))
 
   message("\n=== Model fitting complete ===")
 }

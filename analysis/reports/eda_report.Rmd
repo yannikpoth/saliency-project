@@ -30,7 +30,12 @@ params:
   prp_by_outcome_subj: NA
   wsls_test: NA
   wsls_loss_vs_wins_test: NA
-  prp_test: NA
+  prp_test_omnibus: NA
+  prp_test_omnibus_assumptions: NA
+  prp_test_rm_anova: NA
+  prp_test_sphericity: NA
+  prp_test_pairwise: NA
+  prp_test_pairwise_note: NA
   reward_rate_subj: NA
   win_stay_overall_subj: NA
   glmm_stay_or: NA
@@ -1259,6 +1264,32 @@ if (!is.null(params$wsls_test)) {
 }
 ```
 
+```{r wsls-test-assumptions}
+if (!is.null(params$wsls_test)) {
+  params$wsls_test %>%
+    dplyr::transmute(
+      `\\(\\mathbf{Comparison}\\)` = paste0(a, " - ", b),
+      `\\(\\mathbf{N}\\)` = shapiro_n,
+      `\\(\\mathbf{W}\\)` = shapiro_w,
+      `\\(\\mathbf{p}\\)` = shapiro_p_value,
+      `\\(\\mathbf{Normality\\ met}\\)` = dplyr::case_when(
+        is.na(normality_assumption_met) ~ "NA",
+        normality_assumption_met ~ "Yes",
+        TRUE ~ "No"
+      ),
+      `\\(\\mathbf{Recommended\\ test}\\)` = recommended_test,
+      `\\(\\mathbf{Note}\\)` = dplyr::coalesce(assumption_note, "")
+    ) %>%
+    kable(
+      digits = 4,
+      escape = FALSE,
+      caption = "Table 6.2b: WSLS Assumption Check for Paired Difference Scores (Shapiro-Wilk)"
+    ) %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+    row_spec(0, bold = FALSE)
+}
+```
+
 ```{r wsls-test-loss-vs-wins}
 if (!is.null(params$wsls_loss_vs_wins_test)) {
   params$wsls_loss_vs_wins_test %>%
@@ -1277,6 +1308,32 @@ if (!is.null(params$wsls_loss_vs_wins_test)) {
       digits = 4,
       escape = FALSE,
       caption = "Table 6.2a: Paired t-test of WSLS (Loss vs All Wins)"
+    ) %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+    row_spec(0, bold = FALSE)
+}
+```
+
+```{r wsls-test-loss-vs-wins-assumptions}
+if (!is.null(params$wsls_loss_vs_wins_test)) {
+  params$wsls_loss_vs_wins_test %>%
+    dplyr::transmute(
+      `\\(\\mathbf{Comparison}\\)` = "Loss - All Wins",
+      `\\(\\mathbf{N}\\)` = shapiro_n,
+      `\\(\\mathbf{W}\\)` = shapiro_w,
+      `\\(\\mathbf{p}\\)` = shapiro_p_value,
+      `\\(\\mathbf{Normality\\ met}\\)` = dplyr::case_when(
+        is.na(normality_assumption_met) ~ "NA",
+        normality_assumption_met ~ "Yes",
+        TRUE ~ "No"
+      ),
+      `\\(\\mathbf{Recommended\\ test}\\)` = recommended_test,
+      `\\(\\mathbf{Note}\\)` = dplyr::coalesce(assumption_note, "")
+    ) %>%
+    kable(
+      digits = 4,
+      escape = FALSE,
+      caption = "Table 6.2c: WSLS Assumption Check for Loss vs All Wins Difference Scores (Shapiro-Wilk)"
     ) %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
     row_spec(0, bold = FALSE)
@@ -1377,28 +1434,156 @@ if (!is.null(params$prp_by_outcome_subj)) {
 ```
 
 ```{r prp-test}
-if (!is.null(params$prp_test)) {
-  params$prp_test %>%
+if (!is.null(params$prp_test_omnibus)) {
+  params$prp_test_omnibus %>%
     dplyr::transmute(
       `\\(\\mathbf{N}\\)` = n,
-      `\\(\\mathbf{\\bar{x}_{SW}}\\)` = mean_a,
-      `\\(\\mathbf{\\bar{x}_{NW}}\\)` = mean_b,
-      `\\(\\mathbf{\\Delta}\\)` = mean_diff,
-      `\\(\\mathbf{t}\\)` = t,
-      `\\(\\mathbf{df}\\)` = df,
+      `\\(\\mathbf{k}\\)` = k,
+      `\\(\\mathbf{Test}\\)` = test,
+      `\\(\\mathbf{Statistic}\\)` = statistic,
+      `\\(\\mathbf{df_1}\\)` = df1,
+      `\\(\\mathbf{df_2}\\)` = df2,
       `\\(\\mathbf{p}\\)` = p_value,
+      `\\(\\mathbf{Significant}\\)` = dplyr::case_when(
+        is.na(significant) ~ "NA",
+        significant ~ "Yes",
+        TRUE ~ "No"
+      ),
+      `\\(\\mathbf{Normality\\ met}\\)` = dplyr::case_when(
+        is.na(normality_assumption_met) ~ "NA",
+        normality_assumption_met ~ "Yes",
+        TRUE ~ "No"
+      ),
+      `\\(\\mathbf{Sphericity\\ met}\\)` = dplyr::case_when(
+        is.na(sphericity_assumption_met) ~ "NA",
+        sphericity_assumption_met ~ "Yes",
+        TRUE ~ "No"
+      ),
+      `\\(\\mathbf{Correction}\\)` = dplyr::coalesce(correction_used, "NA"),
+      `\\(\\mathbf{Deviation\\ from\\ prereg}\\)` = dplyr::case_when(
+        is.na(deviation_from_preregistration) ~ "NA",
+        deviation_from_preregistration ~ "Yes",
+        TRUE ~ "No"
+      ),
+      `\\(\\mathbf{Recommended\\ test}\\)` = recommended_test,
+      `\\(\\mathbf{Note}\\)` = dplyr::coalesce(assumption_note, "")
+    ) %>%
+    kable(
+      digits = 4,
+      escape = FALSE,
+      caption = "Table 6.3: Omnibus PRP Test Across Previous Outcome Types"
+    ) %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+    row_spec(0, bold = FALSE)
+} else {
+  print("No PRP test results provided.")
+}
+```
+
+```{r prp-test-assumptions}
+if (!is.null(params$prp_test_omnibus_assumptions)) {
+  params$prp_test_omnibus_assumptions %>%
+    dplyr::transmute(
+      `\\(\\mathbf{Comparison}\\)` = comparison,
+      `\\(\\mathbf{N}\\)` = shapiro_n,
+      `\\(\\mathbf{W}\\)` = shapiro_w,
+      `\\(\\mathbf{p}\\)` = shapiro_p_value,
+      `\\(\\mathbf{Normality\\ met}\\)` = dplyr::case_when(
+        is.na(normality_assumption_met) ~ "NA",
+        normality_assumption_met ~ "Yes",
+        TRUE ~ "No"
+      ),
+      `\\(\\mathbf{Note}\\)` = dplyr::coalesce(assumption_note, "")
+    ) %>%
+    kable(
+      digits = 4,
+      escape = FALSE,
+      caption = "Table 6.3a: PRP Omnibus Assumption Checks for Pairwise Difference Scores"
+    ) %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+    row_spec(0, bold = FALSE)
+}
+```
+
+```{r prp-test-rm-anova}
+if (!is.null(params$prp_test_rm_anova)) {
+  params$prp_test_rm_anova %>%
+    dplyr::transmute(
+      `\\(\\mathbf{N}\\)` = n,
+      `\\(\\mathbf{F}\\)` = statistic,
+      `\\(\\mathbf{df_1}\\)` = df1,
+      `\\(\\mathbf{df_2}\\)` = df2,
+      `\\(\\mathbf{p_{uncorrected}}\\)` = p_value_uncorrected,
+      `\\(\\mathbf{p_{GG}}\\)` = p_value_gg,
+      `\\(\\mathbf{p_{HF}}\\)` = p_value_hf,
+      `\\(\\mathbf{Correction\\ used}\\)` = dplyr::coalesce(correction_used, "NA"),
+      `\\(\\mathbf{Selected\\ p}\\)` = p_value_selected,
+      `\\(\\mathbf{Note}\\)` = dplyr::coalesce(assumption_note, "")
+    ) %>%
+    kable(
+      digits = 4,
+      escape = FALSE,
+      caption = "Table 6.3b: Preregistered Repeated-Measures ANOVA for PRP"
+    ) %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+    row_spec(0, bold = FALSE)
+}
+```
+
+```{r prp-test-sphericity}
+if (!is.null(params$prp_test_sphericity)) {
+  params$prp_test_sphericity %>%
+    dplyr::transmute(
+      `\\(\\mathbf{N}\\)` = n,
+      `\\(\\mathbf{W}\\)` = mauchly_w,
+      `\\(\\mathbf{p}\\)` = mauchly_p_value,
+      `\\(\\mathbf{Sphericity\\ met}\\)` = dplyr::case_when(
+        is.na(sphericity_assumption_met) ~ "NA",
+        sphericity_assumption_met ~ "Yes",
+        TRUE ~ "No"
+      ),
+      `\\(\\mathbf{\\epsilon_{GG}}\\)` = gg_epsilon,
+      `\\(\\mathbf{\\epsilon_{HF}}\\)` = hf_epsilon,
+      `\\(\\mathbf{Recommended\\ correction}\\)` = dplyr::coalesce(correction_recommended, "NA"),
+      `\\(\\mathbf{Note}\\)` = dplyr::coalesce(assumption_note, "")
+    ) %>%
+    kable(
+      digits = 4,
+      escape = FALSE,
+      caption = "Table 6.3c: Sphericity Diagnostics for PRP Repeated-Measures ANOVA"
+    ) %>%
+    kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+    row_spec(0, bold = FALSE)
+}
+```
+
+```{r prp-test-pairwise}
+if (!is.null(params$prp_test_pairwise) && nrow(params$prp_test_pairwise) > 0) {
+  params$prp_test_pairwise %>%
+    dplyr::transmute(
+      `\\(\\mathbf{Comparison}\\)` = paste0(a, " - ", b),
+      `\\(\\mathbf{N}\\)` = n,
+      `\\(\\mathbf{\\bar{x}_A}\\)` = mean_a,
+      `\\(\\mathbf{\\bar{x}_B}\\)` = mean_b,
+      `\\(\\mathbf{\\Delta}\\)` = mean_diff,
+      `\\(\\mathbf{Test}\\)` = test_used,
+      `\\(\\mathbf{Statistic}\\)` = statistic,
+      `\\(\\mathbf{df}\\)` = df,
+      `\\(\\mathbf{p_{raw}}\\)` = p_value_raw,
+      `\\(\\mathbf{p_{adjusted}}\\)` = p_value_adjusted,
+      `\\(\\mathbf{Adjustment}\\)` = adjustment_method,
       `\\(\\mathbf{2.5\\%}\\)` = conf_low,
       `\\(\\mathbf{97.5\\%}\\)` = conf_high
     ) %>%
     kable(
       digits = 4,
       escape = FALSE,
-      caption = "Table 6.3: Paired t-test of PRP (Post-Salient Win vs Post-Non-Salient Win)"
+      caption = "Table 6.3d: Pairwise PRP Follow-up Comparisons"
     ) %>%
     kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
     row_spec(0, bold = FALSE)
-} else {
-  print("No PRP test results provided.")
+} else if (!is.null(params$prp_test_pairwise_note)) {
+  print(params$prp_test_pairwise_note)
 }
 ```
 

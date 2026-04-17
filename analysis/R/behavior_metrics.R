@@ -1609,10 +1609,12 @@ compute_prp_median_by_outcome_subject <- function(task_data,
 
 test_paired_outcome_difference <- function(df, subject_col, outcome_col, value_col, a, b) {
   #####
-  # Paired t-test between two outcome types (within-subject)
+  # Paired comparison between two outcome types with Shapiro traceability
   #
   # Takes a long-format subject-level data frame and performs a paired t-test
   # comparing values under outcome a vs outcome b for the same subjects.
+  # Additionally stores a Shapiro-Wilk normality check on paired difference
+  # scores so the reporting layer can document preregistered assumptions.
   #
   # Parameters
   # ----
@@ -1632,7 +1634,8 @@ test_paired_outcome_difference <- function(df, subject_col, outcome_col, value_c
   # Returns
   # ----
   # tibble
-  #     Single-row summary of paired comparison (means, mean diff, t, df, p, CI).
+  #     Single-row summary of paired comparison including Shapiro-Wilk
+  #     diagnostics for the paired difference scores.
   #####
   stopifnot("df must be a data.frame" = is.data.frame(df))
   stopifnot("subject_col exists" = subject_col %in% names(df))
@@ -1661,7 +1664,13 @@ test_paired_outcome_difference <- function(df, subject_col, outcome_col, value_c
       df = NA_real_,
       p_value = NA_real_,
       conf_low = NA_real_,
-      conf_high = NA_real_
+      conf_high = NA_real_,
+      shapiro_n = NA_integer_,
+      shapiro_w = NA_real_,
+      shapiro_p_value = NA_real_,
+      normality_assumption_met = NA,
+      recommended_test = "paired t-test (comparison unavailable)",
+      assumption_note = "Outcome columns were not both available for the requested paired comparison."
     ))
   }
 
@@ -1685,8 +1694,36 @@ test_paired_outcome_difference <- function(df, subject_col, outcome_col, value_c
       df = NA_real_,
       p_value = NA_real_,
       conf_low = NA_real_,
-      conf_high = NA_real_
+      conf_high = NA_real_,
+      shapiro_n = length(x),
+      shapiro_w = NA_real_,
+      shapiro_p_value = NA_real_,
+      normality_assumption_met = NA,
+      recommended_test = "paired t-test (Shapiro-Wilk unavailable)",
+      assumption_note = "Fewer than 3 paired observations were available, so Shapiro-Wilk could not be computed."
     ))
+  }
+
+  diff_scores <- x - y
+  shapiro_res <- NULL
+  shapiro_note <- NA_character_
+
+  if (length(diff_scores) >= 3 && length(diff_scores) <= 5000) {
+    shapiro_res <- stats::shapiro.test(diff_scores)
+  } else if (length(diff_scores) > 5000) {
+    shapiro_note <- "More than 5000 paired observations were available, so Shapiro-Wilk was not computed."
+  } else {
+    shapiro_note <- "Fewer than 3 paired observations were available, so Shapiro-Wilk was not computed."
+  }
+
+  shapiro_p <- if (is.null(shapiro_res)) NA_real_ else shapiro_res$p.value
+  normality_ok <- if (is.na(shapiro_p)) NA else shapiro_p >= 0.05
+  recommended_test <- if (isTRUE(normality_ok)) {
+    "paired t-test"
+  } else if (identical(normality_ok, FALSE)) {
+    "Wilcoxon signed-rank test"
+  } else {
+    "paired t-test (Shapiro-Wilk unavailable)"
   }
 
   tt <- stats::t.test(x, y, paired = TRUE)
@@ -1697,13 +1734,574 @@ test_paired_outcome_difference <- function(df, subject_col, outcome_col, value_c
     b = b,
     mean_a = mean(x),
     mean_b = mean(y),
-    mean_diff = mean(x - y),
-    sd_diff = stats::sd(x - y),
+    mean_diff = mean(diff_scores),
+    sd_diff = stats::sd(diff_scores),
     t = unname(tt$statistic),
     df = unname(tt$parameter),
     p_value = tt$p.value,
     conf_low = unname(tt$conf.int[1]),
-    conf_high = unname(tt$conf.int[2])
+    conf_high = unname(tt$conf.int[2]),
+    shapiro_n = length(diff_scores),
+    shapiro_w = if (is.null(shapiro_res)) NA_real_ else unname(shapiro_res$statistic),
+    shapiro_p_value = shapiro_p,
+    normality_assumption_met = normality_ok,
+    recommended_test = recommended_test,
+    assumption_note = shapiro_note
+  )
+}
+
+test_within_subject_outcome_effect <- function(df,
+                                               subject_col,
+                                               outcome_col,
+                                               value_col,
+                                               outcome_levels,
+                                               normality_alpha = 0.05) {
+ #####
+ # Evaluate a within-subject outcome effect with RM-ANOVA diagnostics
+ #
+ # Builds complete-case subject-by-condition data, checks Shapiro-Wilk
+ # normality on all pairwise difference scores, computes the preregistered
+ # repeated-measures ANOVA, evaluates sphericity with Mauchly's test, and
+ # determines the primary omnibus test. If normality is supported for all
+ # pairwise difference scores, the primary test is the repeated-measures
+ # ANOVA with the appropriate sphericity correction. Otherwise, the primary
+ # test is the Friedman test as a justified within-subject nonparametric
+ # alternative.
+ #
+ # Parameters
+ # ----
+ # df : tibble
+ #     Long-format subject-level data
+ # subject_col : character
+ #     Column name identifying subjects
+ # outcome_col : character
+ #     Column name containing outcome labels
+ # value_col : character
+ #     Column name containing the numeric value to compare
+ # outcome_levels : character
+ #     Ordered vector of outcome labels to include in the within-subject test
+ # normality_alpha : numeric
+ #     Alpha threshold for Shapiro-Wilk normality checks (default: 0.05)
+ #
+ # Returns
+ # ----
+ # list
+ # Named list with:
+ # - wide_complete: complete-case subject-by-condition tibble
+ # - long_complete: complete-case long-format tibble
+ # - assumptions: tibble with Shapiro-Wilk diagnostics for all pairwise
+ #   difference scores
+ # - rm_anova: single-row tibble with repeated-measures ANOVA results,
+ #   including Greenhouse-Geisser and Huynh-Feldt corrected p-values
+ # - sphericity: single-row tibble with Mauchly's test and epsilon estimates
+ # - omnibus: single-row tibble summarizing the selected primary omnibus test
+ #####
+  stopifnot("df must be a data.frame" = is.data.frame(df))
+  stopifnot("subject_col exists" = subject_col %in% names(df))
+  stopifnot("outcome_col exists" = outcome_col %in% names(df))
+  stopifnot("value_col exists" = value_col %in% names(df))
+  stopifnot("outcome_levels must have at least 3 entries" =
+              is.character(outcome_levels) && length(outcome_levels) >= 3)
+  stopifnot("normality_alpha must be numeric scalar in (0, 1)" =
+              is.numeric(normality_alpha) &&
+              length(normality_alpha) == 1 &&
+              is.finite(normality_alpha) &&
+              normality_alpha > 0 &&
+              normality_alpha < 1)
+
+  wide <- df %>%
+    dplyr::select(
+      subject = dplyr::all_of(subject_col),
+      outcome = dplyr::all_of(outcome_col),
+      value = dplyr::all_of(value_col)
+    ) %>%
+    dplyr::filter(outcome %in% outcome_levels) %>%
+    dplyr::mutate(subject = as.character(subject)) %>%
+    tidyr::pivot_wider(names_from = outcome, values_from = value)
+
+  missing_outcomes <- setdiff(outcome_levels, names(wide))
+  if (length(missing_outcomes) > 0) {
+    return(list(
+      wide_complete = tibble::tibble(),
+      long_complete = tibble::tibble(),
+      rm_anova = tibble::tibble(
+        n = 0L,
+        k = length(outcome_levels),
+        test = "repeated-measures ANOVA",
+        statistic_name = NA_character_,
+        statistic = NA_real_,
+        df1 = NA_real_,
+        df2 = NA_real_,
+        p_value_uncorrected = NA_real_,
+        p_value_gg = NA_real_,
+        p_value_hf = NA_real_,
+        correction_used = NA_character_,
+        corrected_df1 = NA_real_,
+        corrected_df2 = NA_real_,
+        p_value_selected = NA_real_,
+        significant = NA,
+        normality_assumption_met = NA,
+        sphericity_assumption_met = NA,
+        assumption_note = paste0(
+          "The following outcome levels were unavailable: ",
+          paste(missing_outcomes, collapse = ", "),
+          "."
+        )
+      ),
+      sphericity = tibble::tibble(
+        n = 0L,
+        mauchly_w = NA_real_,
+        mauchly_p_value = NA_real_,
+        sphericity_assumption_met = NA,
+        gg_epsilon = NA_real_,
+        hf_epsilon = NA_real_,
+        correction_recommended = NA_character_,
+        assumption_note = paste0(
+          "The following outcome levels were unavailable: ",
+          paste(missing_outcomes, collapse = ", "),
+          "."
+        )
+      ),
+      omnibus = tibble::tibble(
+        n = 0L,
+        k = length(outcome_levels),
+        test = "comparison unavailable",
+        statistic_name = NA_character_,
+        statistic = NA_real_,
+        df1 = NA_real_,
+        df2 = NA_real_,
+        p_value = NA_real_,
+        significant = NA,
+        normality_assumption_met = NA,
+        sphericity_assumption_met = NA,
+        correction_used = NA_character_,
+        deviation_from_preregistration = NA,
+        recommended_test = "comparison unavailable",
+        assumption_note = paste0(
+          "The following outcome levels were unavailable: ",
+          paste(missing_outcomes, collapse = ", "),
+          "."
+        ),
+        deviation_note = paste0(
+          "The preregistered repeated-measures ANOVA could not be evaluated because the following outcome levels were unavailable: ",
+          paste(missing_outcomes, collapse = ", "),
+          "."
+        )
+      ),
+      assumptions = tibble::tibble(
+        comparison = character(),
+        a = character(),
+        b = character(),
+        shapiro_n = integer(),
+        shapiro_w = numeric(),
+        shapiro_p_value = numeric(),
+        normality_assumption_met = logical(),
+        assumption_note = character()
+      )
+    ))
+  }
+
+  wide_complete <- wide %>%
+    dplyr::select(subject, dplyr::all_of(outcome_levels)) %>%
+    dplyr::filter(dplyr::if_all(dplyr::all_of(outcome_levels), ~ is.finite(.x)))
+
+  long_complete <- wide_complete %>%
+    tidyr::pivot_longer(
+      cols = dplyr::all_of(outcome_levels),
+      names_to = "outcome",
+      values_to = "value"
+    ) %>%
+    dplyr::mutate(
+      subject = factor(subject),
+      outcome = factor(outcome, levels = outcome_levels)
+    )
+
+  n_complete <- nrow(wide_complete)
+  outcome_pairs <- utils::combn(outcome_levels, 2, simplify = FALSE)
+
+  assumptions <- lapply(outcome_pairs, function(pair) {
+    diff_scores <- wide_complete[[pair[1]]] - wide_complete[[pair[2]]]
+    shapiro_res <- NULL
+    shapiro_note <- NA_character_
+
+    if (length(diff_scores) >= 3 && length(diff_scores) <= 5000) {
+      shapiro_res <- stats::shapiro.test(diff_scores)
+    } else if (length(diff_scores) > 5000) {
+      shapiro_note <- "More than 5000 paired observations were available, so Shapiro-Wilk was not computed."
+    } else {
+      shapiro_note <- "Fewer than 3 paired observations were available, so Shapiro-Wilk was not computed."
+    }
+
+    shapiro_p <- if (is.null(shapiro_res)) NA_real_ else shapiro_res$p.value
+
+    tibble::tibble(
+      comparison = paste0(pair[1], " - ", pair[2]),
+      a = pair[1],
+      b = pair[2],
+      shapiro_n = length(diff_scores),
+      shapiro_w = if (is.null(shapiro_res)) NA_real_ else unname(shapiro_res$statistic),
+      shapiro_p_value = shapiro_p,
+      normality_assumption_met = if (is.na(shapiro_p)) NA else shapiro_p >= normality_alpha,
+      assumption_note = shapiro_note
+    )
+  }) %>%
+    dplyr::bind_rows()
+
+  if (n_complete < 2) {
+    return(list(
+      wide_complete = wide_complete,
+      long_complete = long_complete,
+      rm_anova = tibble::tibble(
+        n = n_complete,
+        k = length(outcome_levels),
+        test = "repeated-measures ANOVA",
+        statistic_name = NA_character_,
+        statistic = NA_real_,
+        df1 = NA_real_,
+        df2 = NA_real_,
+        p_value_uncorrected = NA_real_,
+        p_value_gg = NA_real_,
+        p_value_hf = NA_real_,
+        correction_used = NA_character_,
+        corrected_df1 = NA_real_,
+        corrected_df2 = NA_real_,
+        p_value_selected = NA_real_,
+        significant = NA,
+        normality_assumption_met = NA,
+        sphericity_assumption_met = NA,
+        assumption_note = "Fewer than 2 complete-case subjects were available for the repeated-measures ANOVA."
+      ),
+      sphericity = tibble::tibble(
+        n = n_complete,
+        mauchly_w = NA_real_,
+        mauchly_p_value = NA_real_,
+        sphericity_assumption_met = NA,
+        gg_epsilon = NA_real_,
+        hf_epsilon = NA_real_,
+        correction_recommended = NA_character_,
+        assumption_note = "Fewer than 2 complete-case subjects were available for sphericity diagnostics."
+      ),
+      omnibus = tibble::tibble(
+        n = n_complete,
+        k = length(outcome_levels),
+        test = "comparison unavailable",
+        statistic_name = NA_character_,
+        statistic = NA_real_,
+        df1 = NA_real_,
+        df2 = NA_real_,
+        p_value = NA_real_,
+        significant = NA,
+        normality_assumption_met = NA,
+        sphericity_assumption_met = NA,
+        correction_used = NA_character_,
+        deviation_from_preregistration = NA,
+        recommended_test = "comparison unavailable",
+        assumption_note = "Fewer than 2 complete-case subjects were available for the omnibus PRP analysis.",
+        deviation_note = "The preregistered repeated-measures ANOVA could not be evaluated because fewer than 2 complete-case subjects were available."
+      ),
+      assumptions = assumptions
+    ))
+  }
+
+  all_normality_known <- nrow(assumptions) > 0 && all(is.finite(assumptions$shapiro_p_value))
+  all_normality_met <- all_normality_known && all(assumptions$shapiro_p_value >= normality_alpha)
+
+  mlm_fit <- stats::lm(as.matrix(wide_complete[outcome_levels]) ~ 1)
+  mlm_null <- stats::update(mlm_fit, ~0)
+  spherical_tab <- stats::anova(mlm_fit, mlm_null, X = ~1, test = "Spherical")
+  spherical_row <- spherical_tab[nrow(spherical_tab), , drop = FALSE]
+  heading <- attr(spherical_tab, "heading")
+  gg_line <- heading[grepl("Greenhouse-Geisser epsilon:", heading, fixed = TRUE)]
+  hf_line <- heading[grepl("Huynh-Feldt epsilon:", heading, fixed = TRUE)]
+  gg_epsilon <- if (length(gg_line) == 0) {
+    NA_real_
+  } else {
+    suppressWarnings(as.numeric(sub(".*Greenhouse-Geisser epsilon:\\s*", "", gg_line[1])))
+  }
+  hf_epsilon <- if (length(hf_line) == 0) {
+    NA_real_
+  } else {
+    suppressWarnings(as.numeric(sub(".*Huynh-Feldt epsilon:\\s*", "", hf_line[1])))
+  }
+
+  mauchly_res <- tryCatch(
+    stats::mauchly.test(mlm_fit, X = ~1),
+    error = function(e) NULL
+  )
+  mauchly_p <- if (is.null(mauchly_res)) NA_real_ else mauchly_res$p.value
+  mauchly_w <- if (is.null(mauchly_res)) NA_real_ else unname(mauchly_res$statistic)
+  sphericity_met <- if (is.na(mauchly_p)) NA else mauchly_p >= 0.05
+  correction_used <- if (isTRUE(sphericity_met)) {
+    "none"
+  } else if (!is.na(gg_epsilon) && gg_epsilon < 0.75) {
+    "Greenhouse-Geisser"
+  } else if (!is.na(hf_epsilon)) {
+    "Huynh-Feldt"
+  } else {
+    "none"
+  }
+
+  rm_p_uncorrected <- unname(spherical_row[["Pr(>F)"]][1])
+  rm_p_gg <- unname(spherical_row[["G-G Pr"]][1])
+  rm_p_hf <- unname(spherical_row[["H-F Pr"]][1])
+  rm_df1 <- unname(spherical_row[["num Df"]][1])
+  rm_df2 <- unname(spherical_row[["den Df"]][1])
+  corrected_df1 <- if (identical(correction_used, "Greenhouse-Geisser") && is.finite(gg_epsilon)) {
+    rm_df1 * gg_epsilon
+  } else if (identical(correction_used, "Huynh-Feldt") && is.finite(hf_epsilon)) {
+    rm_df1 * hf_epsilon
+  } else {
+    rm_df1
+  }
+  corrected_df2 <- if (identical(correction_used, "Greenhouse-Geisser") && is.finite(gg_epsilon)) {
+    rm_df2 * gg_epsilon
+  } else if (identical(correction_used, "Huynh-Feldt") && is.finite(hf_epsilon)) {
+    rm_df2 * hf_epsilon
+  } else {
+    rm_df2
+  }
+  rm_p_selected <- if (identical(correction_used, "Greenhouse-Geisser")) {
+    rm_p_gg
+  } else if (identical(correction_used, "Huynh-Feldt")) {
+    rm_p_hf
+  } else {
+    rm_p_uncorrected
+  }
+
+  rm_anova <- tibble::tibble(
+    n = n_complete,
+    k = length(outcome_levels),
+    test = "repeated-measures ANOVA",
+    statistic_name = "F",
+    statistic = unname(spherical_row[["F"]][1]),
+    df1 = rm_df1,
+    df2 = rm_df2,
+    p_value_uncorrected = rm_p_uncorrected,
+    p_value_gg = rm_p_gg,
+    p_value_hf = rm_p_hf,
+    correction_used = correction_used,
+    corrected_df1 = corrected_df1,
+    corrected_df2 = corrected_df2,
+    p_value_selected = rm_p_selected,
+    significant = ifelse(is.na(rm_p_selected), NA, rm_p_selected < 0.05),
+    normality_assumption_met = if (all_normality_known) all_normality_met else NA,
+    sphericity_assumption_met = sphericity_met,
+    assumption_note = if (isTRUE(sphericity_met)) {
+      "Sphericity was not rejected, so the uncorrected repeated-measures ANOVA p-value is retained."
+    } else if (identical(correction_used, "Greenhouse-Geisser")) {
+      "Sphericity was rejected, so the Greenhouse-Geisser corrected repeated-measures ANOVA p-value is retained."
+    } else if (identical(correction_used, "Huynh-Feldt")) {
+      "Sphericity was rejected, so the Huynh-Feldt corrected repeated-measures ANOVA p-value is retained."
+    } else {
+      "Sphericity diagnostics were unavailable, so the uncorrected repeated-measures ANOVA p-value is retained."
+    }
+  )
+
+  sphericity <- tibble::tibble(
+    n = n_complete,
+    mauchly_w = mauchly_w,
+    mauchly_p_value = mauchly_p,
+    sphericity_assumption_met = sphericity_met,
+    gg_epsilon = gg_epsilon,
+    hf_epsilon = hf_epsilon,
+    correction_recommended = correction_used,
+    assumption_note = if (isTRUE(sphericity_met)) {
+      "Mauchly's test did not reject sphericity."
+    } else if (identical(sphericity_met, FALSE)) {
+      "Mauchly's test rejected sphericity."
+    } else {
+      "Mauchly's test could not be computed."
+    }
+  )
+
+  if (isTRUE(all_normality_met)) {
+    omnibus <- tibble::tibble(
+      n = n_complete,
+      k = length(outcome_levels),
+      test = "repeated-measures ANOVA",
+      statistic_name = "F",
+      statistic = rm_anova$statistic,
+      df1 = rm_anova$corrected_df1,
+      df2 = rm_anova$corrected_df2,
+      p_value = rm_anova$p_value_selected,
+      significant = rm_anova$significant,
+      normality_assumption_met = TRUE,
+      sphericity_assumption_met = sphericity_met,
+      correction_used = correction_used,
+      deviation_from_preregistration = FALSE,
+      recommended_test = "repeated-measures ANOVA",
+      assumption_note = paste0(
+        "All pairwise PRP difference scores satisfied Shapiro-Wilk normality at alpha = ",
+        normality_alpha,
+        "."
+      ),
+      deviation_note = NA_character_
+    )
+  } else {
+    friedman_res <- stats::friedman.test(as.matrix(wide_complete[outcome_levels]))
+
+    omnibus <- tibble::tibble(
+      n = n_complete,
+      k = length(outcome_levels),
+      test = "Friedman test",
+      statistic_name = "chi-squared",
+      statistic = unname(friedman_res$statistic),
+      df1 = unname(friedman_res$parameter),
+      df2 = NA_real_,
+      p_value = friedman_res$p.value,
+      significant = ifelse(is.na(friedman_res$p.value), NA, friedman_res$p.value < 0.05),
+      normality_assumption_met = if (all_normality_known) FALSE else NA,
+      sphericity_assumption_met = NA,
+      correction_used = NA_character_,
+      deviation_from_preregistration = TRUE,
+      recommended_test = "Friedman test",
+      assumption_note = if (all_normality_known) {
+        paste0(
+          "At least one pairwise PRP difference score violated Shapiro-Wilk normality at alpha = ",
+          normality_alpha,
+          ", so the Friedman test was used."
+        )
+      } else {
+        "Normality could not be established for all pairwise PRP difference scores, so the Friedman test was used."
+      },
+      deviation_note = "The preregistration specified a repeated-measures ANOVA framework, but the primary omnibus inference was switched to the Friedman test because the within-subject normality assumption was not supported."
+    )
+  }
+
+  list(
+    wide_complete = wide_complete,
+    long_complete = long_complete,
+    rm_anova = rm_anova,
+    sphericity = sphericity,
+    omnibus = omnibus,
+    assumptions = assumptions
+  )
+}
+
+test_paired_outcome_difference_wilcoxon <- function(df,
+                                                    subject_col,
+                                                    outcome_col,
+                                                    value_col,
+                                                    a,
+                                                    b) {
+ #####
+ # Paired Wilcoxon signed-rank comparison between two outcome conditions
+ #
+ # Computes a paired Wilcoxon signed-rank test between two within-subject
+ # outcome conditions. This helper is intended for post-hoc follow-up
+ # comparisons after a significant Friedman test.
+ #
+ # Parameters
+ # ----
+ # df : tibble
+ #     Long-format subject-level data
+ # subject_col : character
+ #     Column name identifying subjects
+ # outcome_col : character
+ #     Column name containing outcome labels
+ # value_col : character
+ #     Column name containing the numeric value to compare
+ # a : character
+ #     Outcome label for condition A
+ # b : character
+ #     Outcome label for condition B
+ # Returns
+ # ----
+ # tibble
+ # Single-row summary containing descriptive means and the Wilcoxon test
+ # result for the paired comparison.
+ #####
+  stopifnot("df must be a data.frame" = is.data.frame(df))
+  stopifnot("subject_col exists" = subject_col %in% names(df))
+  stopifnot("outcome_col exists" = outcome_col %in% names(df))
+  stopifnot("value_col exists" = value_col %in% names(df))
+
+  wide <- df %>%
+    dplyr::select(
+      subject = dplyr::all_of(subject_col),
+      outcome = dplyr::all_of(outcome_col),
+      value = dplyr::all_of(value_col)
+    ) %>%
+    dplyr::filter(outcome %in% c(a, b)) %>%
+    tidyr::pivot_wider(names_from = outcome, values_from = value)
+
+  if (!(a %in% names(wide)) || !(b %in% names(wide))) {
+    return(tibble::tibble(
+      n = 0L,
+      a = a,
+      b = b,
+      mean_a = NA_real_,
+      mean_b = NA_real_,
+      mean_diff = NA_real_,
+      sd_diff = NA_real_,
+      test_used = "comparison unavailable",
+      statistic_name = NA_character_,
+      statistic = NA_real_,
+      df = NA_real_,
+      p_value_raw = NA_real_,
+      p_value_adjusted = NA_real_,
+      adjustment_method = NA_character_,
+      conf_low = NA_real_,
+      conf_high = NA_real_,
+      assumption_note = "Outcome columns were not both available for the requested paired comparison."
+    ))
+  }
+
+  x <- wide[[a]]
+  y <- wide[[b]]
+  ok <- is.finite(x) & is.finite(y)
+  x <- x[ok]
+  y <- y[ok]
+
+  if (length(x) < 2) {
+    return(tibble::tibble(
+      n = length(x),
+      a = a,
+      b = b,
+      mean_a = ifelse(length(x) == 0, NA_real_, mean(x)),
+      mean_b = ifelse(length(y) == 0, NA_real_, mean(y)),
+      mean_diff = ifelse(length(x) == 0, NA_real_, mean(x - y)),
+      sd_diff = ifelse(length(x) < 2, NA_real_, stats::sd(x - y)),
+      test_used = "comparison unavailable",
+      statistic_name = NA_character_,
+      statistic = NA_real_,
+      df = NA_real_,
+      p_value_raw = NA_real_,
+      p_value_adjusted = NA_real_,
+      adjustment_method = NA_character_,
+      conf_low = NA_real_,
+      conf_high = NA_real_,
+      assumption_note = "Fewer than 2 paired observations were available for inference."
+    ))
+  }
+
+  diff_scores <- x - y
+  test_res <- suppressWarnings(stats::wilcox.test(
+    x,
+    y,
+    paired = TRUE,
+    exact = FALSE,
+    conf.int = TRUE
+  ))
+
+  tibble::tibble(
+    n = length(x),
+    a = a,
+    b = b,
+    mean_a = mean(x),
+    mean_b = mean(y),
+    mean_diff = mean(diff_scores),
+    sd_diff = stats::sd(diff_scores),
+    test_used = "Wilcoxon signed-rank test",
+    statistic_name = "V",
+    statistic = unname(test_res$statistic),
+    df = NA_real_,
+    p_value_raw = test_res$p.value,
+    p_value_adjusted = NA_real_,
+    adjustment_method = "holm",
+    conf_low = if (!is.null(test_res$conf.int)) unname(test_res$conf.int[1]) else NA_real_,
+    conf_high = if (!is.null(test_res$conf.int)) unname(test_res$conf.int[2]) else NA_real_,
+    assumption_note = NA_character_
   )
 }
 
@@ -1741,7 +2339,8 @@ test_wsls_loss_vs_wins <- function(wsls_by_outcome_subj) {
   #
   # Constructs per-subject P(stay|Win) by pooling Salient Win and Non-Salient Win
   # opportunities (opportunity-weighted within subject), then compares
-  # P(stay|Loss) vs P(stay|Win) in a paired t-test.
+  # P(stay|Loss) vs P(stay|Win) in a paired t-test. Also stores a
+  # Shapiro-Wilk check on paired difference scores for reporting traceability.
   #
   # Parameters
   # ----
@@ -1751,7 +2350,8 @@ test_wsls_loss_vs_wins <- function(wsls_by_outcome_subj) {
   # Returns
   # ----
   # tibble
-  #     Single-row paired t-test summary (Loss vs All Wins).
+  #     Single-row paired comparison summary (Loss vs All Wins) including
+  #     Shapiro-Wilk diagnostics for the paired difference scores.
   #####
   stopifnot("wsls must have participant_id" = "participant_id" %in% names(wsls_by_outcome_subj))
   stopifnot("wsls must have outcome_type" = "outcome_type" %in% names(wsls_by_outcome_subj))
@@ -1795,8 +2395,36 @@ test_wsls_loss_vs_wins <- function(wsls_by_outcome_subj) {
       df = NA_real_,
       p_value = NA_real_,
       conf_low = NA_real_,
-      conf_high = NA_real_
+      conf_high = NA_real_,
+      shapiro_n = length(x),
+      shapiro_w = NA_real_,
+      shapiro_p_value = NA_real_,
+      normality_assumption_met = NA,
+      recommended_test = "paired t-test (Shapiro-Wilk unavailable)",
+      assumption_note = "Fewer than 3 paired observations were available, so Shapiro-Wilk could not be computed."
     ))
+  }
+
+  diff_scores <- x - y
+  shapiro_res <- NULL
+  shapiro_note <- NA_character_
+
+  if (length(diff_scores) >= 3 && length(diff_scores) <= 5000) {
+    shapiro_res <- stats::shapiro.test(diff_scores)
+  } else if (length(diff_scores) > 5000) {
+    shapiro_note <- "More than 5000 paired observations were available, so Shapiro-Wilk was not computed."
+  } else {
+    shapiro_note <- "Fewer than 3 paired observations were available, so Shapiro-Wilk was not computed."
+  }
+
+  shapiro_p <- if (is.null(shapiro_res)) NA_real_ else shapiro_res$p.value
+  normality_ok <- if (is.na(shapiro_p)) NA else shapiro_p >= 0.05
+  recommended_test <- if (isTRUE(normality_ok)) {
+    "paired t-test"
+  } else if (identical(normality_ok, FALSE)) {
+    "Wilcoxon signed-rank test"
+  } else {
+    "paired t-test (Shapiro-Wilk unavailable)"
   }
 
   tt <- stats::t.test(x, y, paired = TRUE)
@@ -1804,13 +2432,19 @@ test_wsls_loss_vs_wins <- function(wsls_by_outcome_subj) {
     n = length(x),
     mean_a = mean(x),
     mean_b = mean(y),
-    mean_diff = mean(x - y),
-    sd_diff = stats::sd(x - y),
+    mean_diff = mean(diff_scores),
+    sd_diff = stats::sd(diff_scores),
     t = unname(tt$statistic),
     df = unname(tt$parameter),
     p_value = tt$p.value,
     conf_low = unname(tt$conf.int[1]),
-    conf_high = unname(tt$conf.int[2])
+    conf_high = unname(tt$conf.int[2]),
+    shapiro_n = length(diff_scores),
+    shapiro_w = if (is.null(shapiro_res)) NA_real_ else unname(shapiro_res$statistic),
+    shapiro_p_value = shapiro_p,
+    normality_assumption_met = normality_ok,
+    recommended_test = recommended_test,
+    assumption_note = shapiro_note
   )
 }
 
@@ -1839,6 +2473,130 @@ test_prp_salient_vs_nonsalient <- function(prp_by_outcome_subj) {
     value_col = "median_prp",
     a = "Post-Salient Win",
     b = "Post-Non-Salient Win"
+  )
+}
+
+test_prp_by_outcome <- function(prp_by_outcome_subj) {
+ #####
+ # Test PRP differences across loss, non-salient win, and salient win
+ #
+ # Runs a complete-case within-subject PRP analysis across the three
+ # preregistered outcome categories. The preregistered repeated-measures
+ # ANOVA is always computed and accompanied by Mauchly's test plus
+ # Greenhouse-Geisser / Huynh-Feldt corrections. If within-subject
+ # normality is not supported, the primary omnibus inference is switched to a
+ # Friedman test as a justified deviation from the preregistration. Pairwise
+ # follow-up tests are only conducted when the selected omnibus test is
+ # significant.
+ #
+ # Parameters
+ # ----
+ # prp_by_outcome_subj : tibble
+ #     Output from compute_prp_median_by_outcome_subject()
+ #
+ # Returns
+ # ----
+ # list
+ # Named list with:
+ # - omnibus: single-row tibble for the selected primary PRP omnibus test
+ # - omnibus_assumptions: tibble with Shapiro-Wilk diagnostics for all pairwise
+ #   difference scores used to choose the primary omnibus test
+ # - rm_anova: single-row tibble with preregistered repeated-measures ANOVA
+ #   results, including sphericity corrections
+ # - sphericity: single-row tibble with Mauchly's test and epsilon estimates
+ # - pairwise: tibble with post-hoc comparisons from the selected omnibus
+ #   framework
+ # - pairwise_note: character string describing whether pairwise tests were run
+ #####
+  stopifnot("prp must have median_prp" = "median_prp" %in% names(prp_by_outcome_subj))
+  stopifnot("prp must have outcome_type_prp" = "outcome_type_prp" %in% names(prp_by_outcome_subj))
+  stopifnot("prp must have participant_id" = "participant_id" %in% names(prp_by_outcome_subj))
+
+  outcome_levels <- c("Post-Loss", "Post-Non-Salient Win", "Post-Salient Win")
+  omnibus_res <- test_within_subject_outcome_effect(
+    df = prp_by_outcome_subj,
+    subject_col = "participant_id",
+    outcome_col = "outcome_type_prp",
+    value_col = "median_prp",
+    outcome_levels = outcome_levels
+  )
+
+  pairwise <- tibble::tibble()
+  pairwise_note <- "Pairwise follow-up tests were not conducted."
+
+  if (nrow(omnibus_res$omnibus) > 0 &&
+      isTRUE(omnibus_res$omnibus$significant[1]) &&
+      identical(omnibus_res$omnibus$test[1], "repeated-measures ANOVA")) {
+    fit_blocked <- stats::lm(value ~ subject + outcome, data = omnibus_res$long_complete)
+    emm <- emmeans::emmeans(fit_blocked, ~ outcome)
+    emm_means <- as.data.frame(summary(emm)) %>%
+      dplyr::select(outcome, emmean)
+    pairwise <- as.data.frame(emmeans::pairs(emm, adjust = "tukey", infer = c(TRUE, TRUE))) %>%
+      dplyr::as_tibble() %>%
+      dplyr::mutate(
+        a = stringr::str_split_fixed(contrast, " - ", 2)[, 1],
+        b = stringr::str_split_fixed(contrast, " - ", 2)[, 2]
+      ) %>%
+      dplyr::left_join(
+        emm_means %>% dplyr::rename(a = outcome, mean_a = emmean),
+        by = "a"
+      ) %>%
+      dplyr::left_join(
+        emm_means %>% dplyr::rename(b = outcome, mean_b = emmean),
+        by = "b"
+      ) %>%
+      dplyr::transmute(
+        n = dplyr::n_distinct(omnibus_res$long_complete$subject),
+        a = a,
+        b = b,
+        mean_a = mean_a,
+        mean_b = mean_b,
+        mean_diff = estimate,
+        sd_diff = NA_real_,
+        test_used = "Tukey-adjusted emmeans contrasts",
+        statistic_name = "t",
+        statistic = t.ratio,
+        df = df,
+        p_value_raw = NA_real_,
+        p_value_adjusted = p.value,
+        adjustment_method = "tukey",
+        conf_low = lower.CL,
+        conf_high = upper.CL,
+        assumption_note = "Parametric follow-up contrasts were conducted because the repeated-measures ANOVA was the selected primary omnibus test."
+      )
+    pairwise_note <- "Pairwise follow-up tests were conducted as Tukey-adjusted estimated marginal mean contrasts."
+  } else if (nrow(omnibus_res$omnibus) > 0 &&
+             isTRUE(omnibus_res$omnibus$significant[1]) &&
+             identical(omnibus_res$omnibus$test[1], "Friedman test")) {
+    pairwise_pairs <- utils::combn(outcome_levels, 2, simplify = FALSE)
+    pairwise <- lapply(pairwise_pairs, function(pair) {
+      test_paired_outcome_difference_wilcoxon(
+        df = prp_by_outcome_subj,
+        subject_col = "participant_id",
+        outcome_col = "outcome_type_prp",
+        value_col = "median_prp",
+        a = pair[1],
+        b = pair[2]
+      )
+    }) %>%
+      dplyr::bind_rows() %>%
+      dplyr::mutate(
+        p_value_adjusted = stats::p.adjust(p_value_raw, method = "holm"),
+        significant_adjusted = dplyr::if_else(is.na(p_value_adjusted), NA, p_value_adjusted < 0.05)
+      )
+    pairwise_note <- "Pairwise follow-up tests were conducted as Wilcoxon signed-rank tests with Holm correction because the Friedman test was the selected primary omnibus test."
+  } else if (nrow(omnibus_res$omnibus) > 0 &&
+             !isTRUE(omnibus_res$omnibus$significant[1])) {
+    pairwise_note <- "Pairwise follow-up tests were not conducted because the selected omnibus PRP test was not significant."
+  }
+
+  list(
+    omnibus = omnibus_res$omnibus,
+    omnibus_assumptions = omnibus_res$assumptions,
+    rm_anova = omnibus_res$rm_anova,
+    sphericity = omnibus_res$sphericity,
+    pairwise = pairwise,
+    pairwise_note = pairwise_note
   )
 }
 

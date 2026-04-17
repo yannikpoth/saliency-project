@@ -1,0 +1,116 @@
+---
+title: "Winning Model Results (LLM-Ready, Tables Only)"
+date: "`r format(Sys.time(), '%Y-%m-%d %H:%M:%S')`"
+output:
+  github_document:
+    toc: false
+    html_preview: false
+params:
+  metadata: NA
+  model_comparison: NA
+  parameter_summary: NA
+  parameter_diagnostics: NA
+  alpha_shift_hdi: NA
+  notes: NA
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+options(knitr.kable.NA = "NA")
+
+library(dplyr)
+library(knitr)
+
+.as_tbl <- function(x) {
+  #####
+  # Convert common objects into a tibble suitable for printing
+  #
+  # Parameters
+  # ----
+  # x : any
+  #     Object expected to be a tibble/data.frame, or NULL/NA placeholder
+  #
+  # Returns
+  # ----
+  # tibble | NULL
+  #     A tibble for printing, or NULL if not printable
+  #####
+  if (is.null(x)) return(NULL)
+  if (length(x) == 1 && is.atomic(x) && is.na(x)) return(NULL)
+  if (inherits(x, "data.frame")) return(dplyr::as_tibble(x))
+  NULL
+}
+
+.kbl <- function(x, digits = 3) {
+  #####
+  # Print a tibble/data.frame as a Markdown table
+  #
+  # Parameters
+  # ----
+  # x : data.frame | tibble
+  #     Table-like object
+  # digits : integer
+  #     Digits for numeric formatting (default: 3)
+  #
+  # Returns
+  # ----
+  # character
+  #     Markdown table (as-is in the knitted document)
+  #####
+  x <- .as_tbl(x)
+  if (is.null(x) || nrow(x) == 0) return(knitr::asis_output("_No data._\n"))
+  knitr::kable(x, format = "pipe", digits = digits)
+}
+```
+
+This file contains **tables and statistical summaries only** for the winning reinforcement-learning model and its model-selection context.
+
+- **Generated at**: `r format(Sys.time(), '%Y-%m-%d %H:%M:%S')`
+
+## 1) Run metadata
+
+### 1.1 Metadata
+
+```{r}
+.kbl(params$metadata, digits = 4)
+```
+
+### 1.2 Notes
+
+```{r}
+notes <- params$notes
+if (is.null(notes) || length(notes) == 0 || (length(notes) == 1 && is.na(notes))) {
+  knitr::asis_output("_No notes._\n")
+} else {
+  cat(paste0("- ", notes, collapse = "\n"))
+  cat("\n")
+}
+```
+
+## 2) Model comparison context
+
+### 2.1 LOO comparison across fitted models
+
+```{r}
+.kbl(params$model_comparison, digits = 4)
+```
+
+## 3) Parameter-level diagnostics
+
+```{r}
+.kbl(params$parameter_diagnostics, digits = 4)
+```
+
+## 4) Posterior parameter summaries
+
+### 4.1 Key group-level parameters
+
+```{r}
+.kbl(params$parameter_summary, digits = 4)
+```
+
+### 4.2 Upper 95% interval for alpha_shift
+
+```{r}
+.kbl(params$alpha_shift_hdi, digits = 4)
+```
