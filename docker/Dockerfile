@@ -8,9 +8,11 @@ ENV RENV_PATHS_LIBRARY=/renv/library
 
 # Install system dependencies (for R packages like rstan)
 RUN apt-get update && apt-get install -y \
+ca-certificates \
 cmake \
 build-essential \
 gfortran \
+git \
 libcurl4-openssl-dev \
 libssl-dev \
 libxml2-dev \
@@ -21,6 +23,7 @@ libfreetype6-dev \
 libpng-dev \
 libtiff5-dev \
 libjpeg-dev \
+openssh-client \
 pandoc \
 python3 \
 python3-pip \
