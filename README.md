@@ -103,11 +103,11 @@ Modern electronic gambling machines use **salient audiovisual cues** (bright lig
 
 ### Option 1: Using Docker (Recommended) 🐳
 
-**The easiest and most reproducible way to run the analysis.**
+**Recommended for reproducible reruns, collaboration, and review.**
 
 #### Prerequisites
 - [Docker](https://docs.docker.com/get-docker/) installed
-- [VS Code](https://code.visualstudio.com/) with [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) (optional but recommended)
+- [VS Code](https://code.visualstudio.com/) with the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) (optional, for interactive development)
 
 #### Steps
 
@@ -119,8 +119,8 @@ Modern electronic gambling machines use **salient audiovisual cues** (bright lig
    ```
 2. Open in VS Code: `code .`
 3. When prompted, click **"Reopen in Container"** (or use Command Palette → "Dev Containers: Reopen in Container")
-4. Wait for container build and setup (~5-10 minutes first time)
-5. You're ready! Run analysis from the integrated terminal:
+4. Wait for the image build to finish. The container restores the pinned R package environment from `renv.lock` during the build.
+5. Run the analysis from the integrated terminal:
    ```bash
    make analysis
    ```
@@ -134,19 +134,20 @@ Modern electronic gambling machines use **salient audiovisual cues** (bright lig
    ```bash
    docker run --rm -v $(pwd):/workspace saliency-project Rscript analysis/run_analysis.R
    ```
+   The Docker image stores the restored R library outside `/workspace`, so bind-mounting the repository does not hide installed packages.
 
 ---
 
 ### Option 2: Local R Installation
 
-**For users who prefer native R (no Docker).**
+**Fallback for users who prefer or require a native R installation.**
 
 #### Prerequisites
 - **R** ≥ 4.5.2 ([download](https://cloud.r-project.org/))
-- **C++ toolchain** for Stan:
+- **Build tools** for compiled R and Stan packages:
   - **macOS**: Xcode Command Line Tools (`xcode-select --install`)
   - **Windows**: [Rtools](https://cran.r-project.org/bin/windows/Rtools/)
-  - **Linux**: `sudo apt install build-essential` (or equivalent)
+  - **Linux**: `sudo apt install build-essential gfortran cmake` (or equivalent)
 
 #### Steps
 
@@ -160,7 +161,7 @@ Modern electronic gambling machines use **salient audiovisual cues** (bright lig
    ```bash
    Rscript analysis/setup.R
    ```
-   *(This may take 10-20 minutes to install all dependencies)*
+   This restores the project library from `renv.lock`. After setup, interactive R sessions opened in the project root auto-activate the same environment.
 
 3. You're ready! See [Running the Analysis](#running-the-analysis) below.
 

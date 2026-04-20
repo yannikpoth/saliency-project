@@ -14,9 +14,7 @@ venv/
 .Rhistory
 .RData
 .Ruserdata
-renv/library/
 .Renv
-renv/
 *.rds
 
 # Processed data (regenerated from raw by analysis pipeline)

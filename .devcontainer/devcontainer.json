@@ -1,6 +1,7 @@
 {
   "name": "Saliency Project R Dev",
   "build": {
+    "context": "..",
     "dockerfile": "../docker/Dockerfile"  // Points to your Dockerfile
   },
   "workspaceFolder": "/workspace",
@@ -15,7 +16,6 @@
     "--memory=8g",  // Allocates 8GB RAM (recommended for Stan model fitting)
     "--cpus=4"     // Allocates 4 CPUs (for parallel MCMC chains)
   ],
-  "postCreateCommand": "R -e 'renv::restore()' && R -e 'renv::repair()'",
   "customizations": {
     "vscode": {
       "extensions": [

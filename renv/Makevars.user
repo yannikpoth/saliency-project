@@ -1,0 +1,4 @@
+## Project-local Makevars override for macOS/Homebrew toolchain.
+## This avoids hardcoded /opt/gfortran paths from R's default config.
+FLIBS = -L/opt/homebrew/opt/gcc/lib/gcc/current -lgfortran -lquadmath
+

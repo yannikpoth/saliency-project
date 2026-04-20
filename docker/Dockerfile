@@ -1,9 +1,16 @@
 # docker/Dockerfile
-# Base on official R image for clean, reproducible setup
+# Base on official R image for a reproducible analysis environment
 FROM rocker/r-ver:4.5.2
+
+# Keep the renv library outside /workspace so bind-mounting the repo
+# (docker run -v $(pwd):/workspace ...) does not hide installed packages.
+ENV RENV_PATHS_LIBRARY=/renv/library
 
 # Install system dependencies (for R packages like rstan)
 RUN apt-get update && apt-get install -y \
+cmake \
+build-essential \
+gfortran \
 libcurl4-openssl-dev \
 libssl-dev \
 libxml2-dev \
@@ -15,28 +22,24 @@ libpng-dev \
 libtiff5-dev \
 libjpeg-dev \
 pandoc \
-make \
-g++ \
 python3 \
 python3-pip \
+pre-commit \
 && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install renv as root (into system libraries for all users)
-RUN R -e "install.packages('renv', version = '1.1.5', repos = 'https://cloud.r-project.org')"
+# Install renv so the lockfile can be restored during the image build
+RUN R -q -e "install.packages('renv', repos = 'https://cloud.r-project.org')"
 
-# Install pre-commit for git hooks
-RUN pip3 install --no-cache-dir pre-commit
+# Restore R packages from the lockfile at build time.
+# Copy only renv metadata first so Docker can cache dependency layers.
+WORKDIR /opt/project
+COPY renv.lock .Rprofile ./
+COPY renv/activate.R renv/activate.R
+COPY renv/.gitignore renv/.gitignore
+RUN R -q -e "renv::restore(prompt = FALSE)"
 
-# Set working directory (files will be mounted here at runtime)
+# Runtime working directory (repo will typically be bind-mounted here)
 WORKDIR /workspace
-
-# TODO: When development is done, uncomment below to bake renv restore into the image
-# # Copy files needed for build-time installs (renv.lock, .Rprofile)
-# COPY renv.lock .Rprofile ./
-#
-# # Restore R packages from lockfile
-# RUN R -e "renv::restore()" && \
-#     R -e "renv::repair()"
 
 # Default command: Start R console for interactive work
 CMD ["R"]
