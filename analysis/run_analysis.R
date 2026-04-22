@@ -450,12 +450,26 @@ if (RUN_MODELS) {
   )
   message(sprintf("LLM-ready model results saved to: %s", model_llm_path))
 
-  ppc_llm_params <- model_reports_build_ppc_params(
+  # Generate PPC figures (discrete-draw PPCs) for the winning model
+  viz_ppc_run_all(
     winning_fit = winning_fit,
+    stan_data   = stan_data,
+    task_data   = data_proc$task,
+    model_name  = comparison$winning_model,
+    timestamp   = TIMESTAMP,
+    num_ppc_sims = 100,
+    block_size   = 20
+  )
+
+  ppc_llm_params <- model_reports_build_ppc_params(
+    winning_fit        = winning_fit,
     winning_model_name = comparison$winning_model,
-    timestamp = TIMESTAMP,
-    fit_path = winning_fit_path,
-    stan_data = stan_data
+    timestamp          = TIMESTAMP,
+    fit_path           = winning_fit_path,
+    stan_data          = stan_data,
+    task_data          = data_proc$task,
+    num_ppc_sims       = 100,
+    block_size         = 20
   )
   ppc_llm_path <- render_ppc_llm_results(
     params = ppc_llm_params,

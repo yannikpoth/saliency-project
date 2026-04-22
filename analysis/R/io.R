@@ -122,10 +122,12 @@ io_get_model_output_dirs <- function(model_name, timestamp = NULL) {
   # analysis/outputs/
   #   ├── figs/
   #   │   └── [model_name]_[timestamp]/
-  #   │       └── diagnostics/
+  #   │       ├── diagnostics/
+  #   │       └── ppc/
   #   └── tables/
   #       └── [model_name]_[timestamp]/
-  #           └── diagnostics/
+  #           ├── diagnostics/
+  #           └── ppc/
   #
   # Parameters
   # ----
@@ -142,6 +144,8 @@ io_get_model_output_dirs <- function(model_name, timestamp = NULL) {
   #     - tables: Path to tables directory
   #     - figs_diag: Path to figures/diagnostics directory
   #     - tables_diag: Path to tables/diagnostics directory
+  #     - figs_ppc: Path to figures/ppc directory
+  #     - tables_ppc: Path to tables/ppc directory
   #####
 
   if (is.null(timestamp)) {
@@ -157,9 +161,11 @@ io_get_model_output_dirs <- function(model_name, timestamp = NULL) {
 
   figs_diag <- file.path(base_figs, "diagnostics")
   tables_diag <- file.path(base_tables, "diagnostics")
+  figs_ppc <- file.path(base_figs, "ppc")
+  tables_ppc <- file.path(base_tables, "ppc")
 
   # Create directories
-  for (d in c(base_figs, base_tables, figs_diag, tables_diag)) {
+  for (d in c(base_figs, base_tables, figs_diag, tables_diag, figs_ppc, tables_ppc)) {
     if (!dir.exists(d)) dir.create(d, recursive = TRUE)
   }
 
@@ -168,6 +174,8 @@ io_get_model_output_dirs <- function(model_name, timestamp = NULL) {
     tables = base_tables,
     figs_diag = figs_diag,
     tables_diag = tables_diag,
+    figs_ppc = figs_ppc,
+    tables_ppc = tables_ppc,
     run_id = run_id
   )
 }

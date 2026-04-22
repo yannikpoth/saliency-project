@@ -633,4 +633,343 @@ viz_posterior_densities_grid <- function(data_list, output_dir) {
 # 3. Posterior Predictive Checks
 # ============================================
 
-# (Placeholders for PPC plots)
+viz_ppc_choice_distribution <- function(yrep_draws,
+                                        stan_data,
+                                        ppc_context,
+                                        output_path) {
+  #####
+  # PPC bars plot for the distribution of discrete choices (stim 1 vs stim 2)
+  #
+  # Parameters
+  # ----
+  # yrep_draws : array
+  #     3-D array [num_ppc_sims, nSubs, maxTrials] of simulated choices
+  # stan_data : list
+  #     Stan data list from prepare_stan_data()
+  # ppc_context : list
+  #     PPC context from model_reports_build_ppc_context()
+  # output_path : character
+  #     Path to save the figure (PNG)
+  #
+  # Returns
+  # ----
+  # character
+  #     The output_path, invisibly
+  #####
+  requireNamespace("bayesplot")
+  requireNamespace("ggplot2")
+
+  mask <- ppc_context$valid_mask
+  y_clean <- as.integer(stan_data$choice[mask])
+
+  n_sims <- dim(yrep_draws)[1]
+  yrep_clean <- matrix(NA_integer_, nrow = n_sims, ncol = length(y_clean))
+  for (i in seq_len(n_sims)) {
+    yrep_clean[i, ] <- as.integer(yrep_draws[i, , ][mask])
+  }
+
+  p <- bayesplot::ppc_bars(y = y_clean, yrep = yrep_clean, freq = FALSE) +
+    ggplot2::labs(
+      title = "PPC: Distribution of Choices",
+      subtitle = "Observed vs simulated proportions (stim 1 / stim 2)"
+    )
+
+  ggplot2::ggsave(output_path, plot = p, width = 8, height = 6, bg = "white")
+  invisible(output_path)
+}
+
+
+viz_ppc_accuracy <- function(ppc_accuracy, output_path) {
+  #####
+  # Jittered boxplot comparing observed and predicted subject-level accuracy
+  #
+  # Parameters
+  # ----
+  # ppc_accuracy : list
+  #     Output of model_reports_ppc_accuracy()
+  # output_path : character
+  #     Path to save the figure (PNG)
+  #
+  # Returns
+  # ----
+  # character
+  #     The output_path, invisibly
+  #####
+  requireNamespace("ggplot2")
+
+  per_subject <- ppc_accuracy$per_subject
+  df <- dplyr::bind_rows(
+    tibble::tibble(type = "Observed", accuracy = per_subject$observed_accuracy),
+    tibble::tibble(type = "Predicted", accuracy = per_subject$predicted_accuracy_mean)
+  )
+  df$type <- factor(df$type, levels = c("Observed", "Predicted"))
+
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = type, y = accuracy, fill = type)) +
+    ggplot2::geom_hline(yintercept = 0.5, linetype = "dashed", color = "grey50") +
+    ggplot2::geom_jitter(ggplot2::aes(color = type), width = 0.15, height = 0,
+                         size = 1.5, alpha = 0.4) +
+    ggplot2::geom_boxplot(width = 0.4, outlier.shape = NA, alpha = 0.7) +
+    ggplot2::stat_summary(fun = mean, geom = "point", shape = 18, size = 4,
+                          color = "white") +
+    ggplot2::scale_fill_manual(values = c("Observed" = "grey60",
+                                          "Predicted" = "skyblue3")) +
+    ggplot2::scale_color_manual(values = c("Observed" = "black",
+                                           "Predicted" = "blue")) +
+    ggplot2::labs(
+      title = "PPC: Distribution of Overall Accuracy",
+      subtitle = "Observed vs model-predicted subject-level accuracy",
+      y = "Accuracy (proportion of optimal choices)",
+      x = ""
+    ) +
+    ggplot2::theme_classic(base_size = 12) +
+    ggplot2::theme(
+      legend.position = "none",
+      plot.title = ggplot2::element_text(face = "bold", hjust = 0.5),
+      plot.subtitle = ggplot2::element_text(hjust = 0.5)
+    )
+
+  ggplot2::ggsave(output_path, plot = p, width = 6, height = 6, bg = "white")
+  invisible(output_path)
+}
+
+
+viz_ppc_stay <- function(yrep_draws,
+                         stan_data,
+                         ppc_context,
+                         ppc_stay,
+                         output_path) {
+  #####
+  # PPC stat grouped plot for conditional stay probabilities
+  #
+  # Shows observed stay probability vs replicated distribution per outcome
+  # condition (Loss, Non-Salient Win, Salient Win).
+  #
+  # Parameters
+  # ----
+  # yrep_draws : array
+  #     3-D array [num_ppc_sims, nSubs, maxTrials]
+  # stan_data : list
+  #     Stan data list from prepare_stan_data()
+  # ppc_context : list
+  #     PPC context from model_reports_build_ppc_context()
+  # ppc_stay : list
+  #     Output of model_reports_ppc_conditional_stay()
+  # output_path : character
+  #     Path to save the figure (PNG)
+  #
+  # Returns
+  # ----
+  # character
+  #     The output_path, invisibly
+  #####
+  requireNamespace("bayesplot")
+  requireNamespace("ggplot2")
+
+  outcome_levels <- c("Loss", "Non-Salient Win", "Salient Win")
+
+  y_obs <- as.numeric(ppc_stay$observed$observed_prob_stay)
+  names(y_obs) <- outcome_levels
+
+  n_sims <- dim(yrep_draws)[1]
+  yrep_matrix <- matrix(NA_real_, nrow = n_sims, ncol = length(outcome_levels),
+                        dimnames = list(NULL, outcome_levels))
+  for (i in seq_len(n_sims)) {
+    sim_choice <- yrep_draws[i, , ]
+    mode(sim_choice) <- "integer"
+    sim_choice[!ppc_context$valid_mask] <- -9L
+    yrep_matrix[i, ] <- model_reports_stay_probs_from_choices(
+      choice_matrix = sim_choice,
+      stan_data = stan_data,
+      ppc_context = ppc_context
+    )
+  }
+
+  p <- bayesplot::ppc_stat_grouped(
+    y = y_obs,
+    yrep = yrep_matrix,
+    group = outcome_levels
+  ) +
+    ggplot2::labs(
+      title = "PPC: Conditional Stay Probabilities",
+      subtitle = "Observed vs replicated (by previous outcome)",
+      x = "Mean probability of staying"
+    ) +
+    ggplot2::theme_minimal(base_size = 12) +
+    ggplot2::theme(legend.position = "bottom")
+
+  ggplot2::ggsave(output_path, plot = p, width = 8, height = 6, bg = "white")
+  invisible(output_path)
+}
+
+
+viz_ppc_learning_curve <- function(yrep_draws,
+                                   stan_data,
+                                   ppc_context,
+                                   ppc_learning_curve,
+                                   output_path) {
+  #####
+  # PPC ribbon plot for the learning curve (proportion optimal across blocks)
+  #
+  # Parameters
+  # ----
+  # yrep_draws : array
+  #     3-D array [num_ppc_sims, nSubs, maxTrials]
+  # stan_data : list
+  #     Stan data list from prepare_stan_data()
+  # ppc_context : list
+  #     PPC context from model_reports_build_ppc_context()
+  # ppc_learning_curve : list
+  #     Output of model_reports_ppc_learning_curve()
+  # output_path : character
+  #     Path to save the figure (PNG)
+  #
+  # Returns
+  # ----
+  # character
+  #     The output_path, invisibly
+  #####
+  requireNamespace("bayesplot")
+  requireNamespace("ggplot2")
+  requireNamespace("scales")
+
+  block_size <- ppc_learning_curve$block_size
+  y_obs <- ppc_learning_curve$per_block$observed
+  n_blocks <- length(y_obs)
+
+  n_sims <- dim(yrep_draws)[1]
+  yrep_matrix <- matrix(NA_real_, nrow = n_sims, ncol = n_blocks)
+  for (i in seq_len(n_sims)) {
+    sim_choice <- yrep_draws[i, , ]
+    mode(sim_choice) <- "integer"
+    sim_choice[!ppc_context$valid_mask] <- -9L
+    yrep_matrix[i, ] <- model_reports_learning_curve_from_choices(
+      choice_matrix = sim_choice,
+      stan_data = stan_data,
+      ppc_context = ppc_context,
+      block_size = block_size
+    )
+  }
+
+  p <- bayesplot::ppc_ribbon(
+    y = y_obs,
+    yrep = yrep_matrix,
+    x = seq_len(n_blocks),
+    prob = 0.5,
+    prob_outer = 0.9
+  ) +
+    ggplot2::scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+    ggplot2::labs(
+      title = "PPC: Learning Curve",
+      subtitle = sprintf("Proportion of optimal choices across %d-trial blocks", block_size),
+      x = "Trial block",
+      y = "Proportion optimal"
+    ) +
+    ggplot2::theme_minimal(base_size = 12)
+
+  ggplot2::ggsave(output_path, plot = p, width = 8, height = 6, bg = "white")
+  invisible(output_path)
+}
+
+
+viz_ppc_run_all <- function(winning_fit,
+                            stan_data,
+                            task_data,
+                            model_name,
+                            timestamp,
+                            num_ppc_sims = 100,
+                            block_size = 20) {
+  #####
+  # Run and save all discrete-draw PPC figures for the winning model
+  #
+  # Builds the PPC context from task_data, extracts the posterior predictive
+  # `predicted_choices` array, computes each PPC summary, and writes the four
+  # figures (choice distribution, accuracy, conditional stay, learning curve)
+  # into the per-model `ppc/` figures directory. Returns a tibble of paths for
+  # downstream reporting.
+  #
+  # Parameters
+  # ----
+  # winning_fit : stanfit
+  #     Winning fitted Stan model
+  # stan_data : list
+  #     Stan data list from prepare_stan_data()
+  # task_data : tibble
+  #     Cleaned task data (post-preprocess, post Participant 16 exclusion)
+  # model_name : character
+  #     Name of the winning model (used for output directory)
+  # timestamp : character
+  #     Timestamp used for the current model run (used for output directory)
+  # num_ppc_sims : integer
+  #     Number of posterior draws to use (default: 100)
+  # block_size : integer
+  #     Trials per learning-curve block (default: 20)
+  #
+  # Returns
+  # ----
+  # tibble or NULL
+  #     Tibble with columns (artifact, path, exists) for the four PPC figures,
+  #     or NULL if the model does not provide `predicted_choices`.
+  #####
+  stopifnot("model_name must be character" = is.character(model_name) && length(model_name) == 1)
+  stopifnot("timestamp must be character" = is.character(timestamp) && length(timestamp) == 1)
+
+  io_get_model_output_dirs_fn <- get("io_get_model_output_dirs", mode = "function")
+  dirs <- io_get_model_output_dirs_fn(model_name, timestamp)
+
+  get_fn <- function(nm) get(nm, mode = "function")
+
+  yrep_draws <- get_fn("model_reports_extract_predicted_choices")(
+    fit = winning_fit, num_ppc_sims = num_ppc_sims
+  )
+  if (is.null(yrep_draws)) {
+    message("viz_ppc_run_all(): `predicted_choices` not found in fit; skipping PPC figures.")
+    return(NULL)
+  }
+
+  ppc_context <- get_fn("model_reports_build_ppc_context")(
+    task_data = task_data, stan_data = stan_data
+  )
+  ppc_accuracy <- get_fn("model_reports_ppc_accuracy")(
+    yrep_draws = yrep_draws, stan_data = stan_data, ppc_context = ppc_context
+  )
+  ppc_stay <- get_fn("model_reports_ppc_conditional_stay")(
+    yrep_draws = yrep_draws, stan_data = stan_data, ppc_context = ppc_context
+  )
+  ppc_lc <- get_fn("model_reports_ppc_learning_curve")(
+    yrep_draws = yrep_draws, stan_data = stan_data, ppc_context = ppc_context,
+    block_size = block_size
+  )
+
+  paths <- c(
+    ppc_choice_distribution = file.path(dirs$figs_ppc, "ppc_choice_distribution.png"),
+    ppc_accuracy            = file.path(dirs$figs_ppc, "ppc_accuracy.png"),
+    ppc_stay                = file.path(dirs$figs_ppc, "ppc_stay.png"),
+    ppc_learning_curve      = file.path(dirs$figs_ppc, "ppc_learning_curve.png")
+  )
+
+  tryCatch(
+    viz_ppc_choice_distribution(yrep_draws, stan_data, ppc_context,
+                                output_path = paths[["ppc_choice_distribution"]]),
+    error = function(e) message("viz_ppc_choice_distribution failed: ", e$message)
+  )
+  tryCatch(
+    viz_ppc_accuracy(ppc_accuracy, output_path = paths[["ppc_accuracy"]]),
+    error = function(e) message("viz_ppc_accuracy failed: ", e$message)
+  )
+  tryCatch(
+    viz_ppc_stay(yrep_draws, stan_data, ppc_context, ppc_stay,
+                 output_path = paths[["ppc_stay"]]),
+    error = function(e) message("viz_ppc_stay failed: ", e$message)
+  )
+  tryCatch(
+    viz_ppc_learning_curve(yrep_draws, stan_data, ppc_context, ppc_lc,
+                           output_path = paths[["ppc_learning_curve"]]),
+    error = function(e) message("viz_ppc_learning_curve failed: ", e$message)
+  )
+
+  tibble::tibble(
+    artifact = names(paths),
+    path = unname(paths),
+    exists = file.exists(unname(paths))
+  )
+}

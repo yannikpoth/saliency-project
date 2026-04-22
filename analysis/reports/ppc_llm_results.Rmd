@@ -7,10 +7,15 @@ output:
     html_preview: false
 params:
   metadata: NA
-  ppc_overview: NA
-  ppc_by_subject: NA
-  ppc_by_condition: NA
+  ppc_discrepancy_summary: NA
+  ppc_choice_distribution: NA
+  ppc_accuracy: NA
+  ppc_stay: NA
+  ppc_learning_curve: NA
+  ppc_prob_overview: NA
+  ppc_prob_by_condition: NA
   artifact_paths: NA
+  settings: NA
   notes: NA
 ---
 
@@ -61,29 +66,147 @@ library(knitr)
   if (is.null(x) || nrow(x) == 0) return(knitr::asis_output("_No data._\n"))
   knitr::kable(x, format = "pipe", digits = digits)
 }
+
+.sub <- function(lst, key) {
+  #####
+  # Safely extract a named slot from a list-valued param
+  #
+  # Parameters
+  # ----
+  # lst : any
+  #     Expected to be a list; may be NULL or NA
+  # key : character
+  #     Name to extract
+  #
+  # Returns
+  # ----
+  # any
+  #     lst[[key]] if available, else NULL
+  #####
+  if (is.null(lst)) return(NULL)
+  if (length(lst) == 1 && is.atomic(lst) && is.na(lst)) return(NULL)
+  if (!is.list(lst)) return(NULL)
+  lst[[key]]
+}
 ```
 
-This file contains **tables and posterior predictive summaries only** for the winning reinforcement-learning model.
+Tables-only posterior predictive summaries for the winning reinforcement-learning model.
 
 - **Generated at**: `r format(Sys.time(), '%Y-%m-%d %H:%M:%S')`
 
-## 1) Run metadata
-
-### 1.1 Metadata
+## 1. Run metadata
 
 ```{r}
 .kbl(params$metadata, digits = 4)
 ```
 
-## 2) Posterior predictive overview
-
-### 2.1 Aggregate PPC summary
+### 1.1 PPC settings
 
 ```{r}
-.kbl(params$ppc_overview, digits = 4)
+.kbl(params$settings, digits = 4)
 ```
 
-### 2.2 PPC notes
+## 2. Discrepancy summary (at-a-glance)
+
+```{r}
+.kbl(params$ppc_discrepancy_summary, digits = 4)
+```
+
+## 3. Choice distribution PPC
+
+### 3.1 Observed counts and proportions
+
+```{r}
+.kbl(.sub(params$ppc_choice_distribution, "observed"), digits = 4)
+```
+
+### 3.2 Replicated distribution (across simulations)
+
+```{r}
+.kbl(.sub(params$ppc_choice_distribution, "replicated_summary"), digits = 3)
+```
+
+### 3.3 Discrepancy
+
+```{r}
+.kbl(.sub(params$ppc_choice_distribution, "chi_squared"), digits = 4)
+```
+
+## 4. Overall accuracy PPC
+
+### 4.1 Group-level summary
+
+```{r}
+.kbl(.sub(params$ppc_accuracy, "group_summary"), digits = 4)
+```
+
+### 4.2 Discrepancy
+
+```{r}
+.kbl(.sub(params$ppc_accuracy, "discrepancy"), digits = 4)
+```
+
+### 4.3 Per-subject comparison
+
+```{r}
+.kbl(.sub(params$ppc_accuracy, "per_subject"), digits = 4)
+```
+
+## 5. Conditional stay PPC
+
+### 5.1 Observed stay probabilities by previous outcome
+
+```{r}
+.kbl(.sub(params$ppc_stay, "observed"), digits = 4)
+```
+
+### 5.2 Replicated stay probabilities by previous outcome
+
+```{r}
+.kbl(.sub(params$ppc_stay, "replicated_summary"), digits = 4)
+```
+
+### 5.3 Discrepancy
+
+```{r}
+.kbl(.sub(params$ppc_stay, "discrepancy"), digits = 4)
+```
+
+## 6. Learning curve PPC
+
+### 6.1 Per-block observed vs replicated
+
+```{r}
+.kbl(.sub(params$ppc_learning_curve, "per_block"), digits = 4)
+```
+
+### 6.2 Discrepancy
+
+```{r}
+.kbl(.sub(params$ppc_learning_curve, "discrepancy"), digits = 4)
+```
+
+## 7. Aggregate choice probability PPC
+
+### 7.1 Overview (pp_choice_stim2_prob)
+
+```{r}
+.kbl(params$ppc_prob_overview, digits = 4)
+```
+
+### 7.2 By feedback condition
+
+```{r}
+.kbl(params$ppc_prob_by_condition, digits = 4)
+```
+
+## 8. Saved PPC artifacts
+
+```{r}
+.kbl(params$artifact_paths, digits = 4)
+```
+
+## 9. Notes
 
 ```{r}
 notes <- params$notes
@@ -93,26 +216,4 @@ if (is.null(notes) || length(notes) == 0 || (length(notes) == 1 && is.na(notes))
   cat(paste0("- ", notes, collapse = "\n"))
   cat("\n")
 }
-```
-
-## 3) PPC detail tables
-
-### 3.1 PPC summary by subject
-
-```{r}
-.kbl(params$ppc_by_subject, digits = 4)
-```
-
-### 3.2 PPC summary by feedback condition
-
-```{r}
-.kbl(params$ppc_by_condition, digits = 4)
-```
-
-## 4) Supporting artifacts
-
-### 4.1 Saved PPC artifacts
-
-```{r}
-.kbl(params$artifact_paths, digits = 4)
 ```
